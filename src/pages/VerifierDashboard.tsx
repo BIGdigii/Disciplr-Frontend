@@ -1,26 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 import { Text } from '../components/Text';
-import { useVerifierStore, type ValidationTask } from '../Zustand/Store';
+import { useVerifierStore } from '../Zustand/Store';
 import VerifierMetrics from '../components/VerifierMetrics';
-import { StatusChip, type ChipStatus } from '../components/StatusChip';
+import { StatusChip } from '../components/StatusChip';
 import { daysRemaining } from '../utils/dashboard';
 import { useCurrentTime } from '../hooks/useCurrentTime';
 import { CRITICAL_DAYS_THRESHOLD } from '../utils/verifierMetrics';
-
-function mapValidationStatusToChipStatus(status: ValidationTask['status']): ChipStatus {
-  switch (status) {
-    case 'pending':
-      return 'pending_validation';
-    case 'approved':
-      return 'approved';
-    case 'rejected':
-      return 'rejected';
-    default: {
-      const exhaustiveCheck: never = status;
-      return exhaustiveCheck;
-    }
-  }
-}
+import { mapValidationStatusToChipStatus } from '../utils/verifierStatus';
 
 export default function VerifierDashboard() {
   const navigate = useNavigate();
