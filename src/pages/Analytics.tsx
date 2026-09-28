@@ -8,7 +8,11 @@ import { logger } from '../utils/logger'
 import Skeleton from '../components/Skeleton'
 const AnalyticsCharts = lazy(() => import('./AnalyticsCharts'))
 
-type JsPDFCtor = typeof import('jspdf').jsPDF
+import type { jsPDF } from 'jspdf'
+
+type JsPDFInstance = InstanceType<typeof import('jspdf').default>
+type JsPDFCtor = typeof jsPDF
+
 
 import {
   Target, CheckCircle, Award, ArrowUpRight, ArrowDownRight, Clock, DollarSign,
@@ -281,7 +285,7 @@ const currentStreak = useMemo(() => {
       }
 
       const jsPDF = jsPDFRef.current
-      const doc = new jsPDF()
+      const doc: JsPDFInstance = new jsPDF()
       const accent = [0, 195, 137] as const
 
       // Header bar
@@ -303,7 +307,7 @@ const currentStreak = useMemo(() => {
       doc.setFont('helvetica', 'bold')
       doc.text('Key Metrics', 14, 42)
 
-      const metrics = [
+      const metrics: [string, string][] = [
         ['Total Capital Locked', `${formatCurrency(kpis.totalCapital)} USDC`],
         ['Success Rate', formatPercentage(kpis.averageSuccessRate)],
         ['Total Milestones', `${kpis.totalMilestones}`],
@@ -318,10 +322,10 @@ const currentStreak = useMemo(() => {
         const row = 52 + Math.floor(i / 2) * 14
         doc.setFont('helvetica', 'normal')
         doc.setTextColor(100, 110, 130)
-        doc.text(label as string, col, row)
+        doc.text(label, col, row)
         doc.setFont('helvetica', 'bold')
         doc.setTextColor(20, 20, 30)
-        doc.text(value as string, col, row + 6)
+        doc.text(value, col, row + 6)
       })
 
       // Divider
@@ -375,7 +379,7 @@ const currentStreak = useMemo(() => {
       doc.setTextColor(30, 45, 66)
       doc.text('Capital Flow Summary', 14, tableEnd + 12)
 
-      const flow = [
+      const flow: [string, string, readonly [number, number, number]][] = [
         ['Released to Success Destinations', '$8,750 USDC', [0, 155, 110] as const],
         ['Redirected on Failure', '$2,400 USDC', [200, 60, 55] as const],
         ['Platform Fee (1%)', '$124 USDC', [100, 110, 130] as const],
@@ -386,10 +390,10 @@ const currentStreak = useMemo(() => {
         doc.setFont('helvetica', 'normal')
         doc.setFontSize(10)
         doc.setTextColor(100, 110, 130)
-        doc.text(label as string, 17, y)
+        doc.text(label, 17, y)
         doc.setFont('helvetica', 'bold')
-        doc.setTextColor(...(color as [number, number, number]))
-        doc.text(value as string, 150, y)
+        doc.setTextColor(...color)
+        doc.text(value, 150, y)
       })
 
       // Footer
