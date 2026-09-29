@@ -4,8 +4,6 @@ import {
   type TypographyRole,
 } from '../typography';
 
-// ── getTypographyClass ────────────────────────────────────────────────────────
-
 describe('getTypographyClass', () => {
   const cases: [TypographyRole, string][] = [
     ['display', 'text-display'],
@@ -30,6 +28,11 @@ describe('getTypographyClass', () => {
     roles.forEach(role => {
       expect(getTypographyClass(role)).toBeTruthy();
     });
+  });
+
+  it('does not export classifyTypography ensuring dead export surface is removed', async () => {
+    const module = await import('../typography');
+    expect('classifyTypography' in module).toBe(false);
   });
 });
 

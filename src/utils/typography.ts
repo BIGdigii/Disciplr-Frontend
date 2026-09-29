@@ -3,7 +3,6 @@
  * 
  * @example
  * const displayClass = getTypographyClass('display');
- * // Returns 'text-display' which handles responsive sizing
  */
 
 export type TypographyRole = 'display' | 'title' | 'subtitle' | 'body' | 'caption' | 'mono';
@@ -12,7 +11,7 @@ export type TypographyRole = 'display' | 'title' | 'subtitle' | 'body' | 'captio
  * Maps a typography role to its corresponding CSS class
  * The class automatically handles responsive scaling via CSS variables
  * 
- * @param role - The typography role: display, title, body, caption, or mono
+ * @param role - The typography role: display, title, subtitle, body, caption, or mono
  * @returns CSS class name for the role
  */
 export function getTypographyClass(role: TypographyRole): string {
