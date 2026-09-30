@@ -32,7 +32,7 @@ describe('EmptyState', () => {
   });
 
   it('does not trigger form submit when rendered inside a form and clicked', () => {
-    const handleSubmit = vi.fn((e) => e.preventDefault());
+    const handleSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
     const handleClick = vi.fn();
     
     render(
