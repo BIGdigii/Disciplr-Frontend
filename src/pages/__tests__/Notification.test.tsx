@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { Ref, ReactNode } from "react";
@@ -139,6 +139,17 @@ describe("Notification page", () => {
       (n) => n.id === unreadNotification.id,
     );
     expect(updated!.isRead).toBe(true);
+  });
+
+  it("ignores a stale dismiss action without changing notifications", () => {
+    renderNotification();
+    const before = useNotification.getState().notification;
+
+    act(() => {
+      useNotification.getState().dismiss("notification-that-no-longer-exists");
+    });
+
+    expect(useNotification.getState().notification).toEqual(before);
   });
 
   it("resets to page 1 when filter changes", () => {
