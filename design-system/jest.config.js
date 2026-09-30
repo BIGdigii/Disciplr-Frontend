@@ -2,10 +2,10 @@ export default {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/src'],
-  testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
+  testMatch: ['**/__tests__/**/*.ts', '**/?(test|spec).ts'],
   collectCoverageFrom: [
     'src/**/*.ts',
-    '!src/**/*.d.ts',
+    '!src/**/*.t.d.ts',
     '!src/**/__tests__/**'
   ],
   coverageThreshold: {
