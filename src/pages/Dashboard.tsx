@@ -10,6 +10,7 @@ import * as dashboardUtils from "../utils/dashboard";
 import type { VaultPreview, Activity, Deadline } from "../utils/dashboard";
 import type { VaultStatus, Vault } from "../types/vault";
 import { timelineProgress } from "../utils/vaultLifecycle";
+import { validateVaultPreview, sanitizeActivity } from "../utils/dashboardValidation";
 
 // ── Mock Data ─────────────────────────────────────────────────────────────────
 // Seed data lives in src/fixtures/dashboard.ts. VAULTS are loaded async from
@@ -19,6 +20,37 @@ import { listVaults } from "../services/vaultService";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+
+/**
+ * Invariant: only vaults whose preview passes validation are rendered.
+ * Invalid entries are dropped and logged (no sensitive fields) so that
+ * malformed upstream data cannot produce inconsistent summaries or cards.
+ */
+function toSafePreviews(loaded: Vault[]): VaultPreview[] {
+  const safe: VaultPreview[] = [];
+  for (const v of loaded) {
+    const preview: VaultPreview = {
+      id: v.id,
+      name: v.name,
+      amount: v.amount,
+      currency: v.currency,
+      status: v.status as VaultStatus,
+      deadline: v.deadline,
+      progressPct: timelineProgress(v.createdAt, v.deadline),
+    };
+    const result = validateVaultPreview(preview);
+    if (result.ok) {
+      safe.push(preview);
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn("[Dashboard] dropped invalid vault preview", {
+        id: v.id,
+        reason: result.reason,
+      });
+    }
+  }
+  return safe;
+}
 
 const ACTIVITY_CFG: Record<
   Activity["type"],
@@ -182,36 +214,32 @@ export default function Dashboard({
     "loading" | "empty" | "data" | "error"
   >("loading");
   const [retryCount, setRetryCount] = useState(0);
+  const [requestId, setRequestId] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    const currentRequest = requestId;
     setVaultStatus("loading");
     listVaults()
       .then((loaded) => {
-        if (cancelled) return;
+        if (cancelled || currentRequest !== requestId) return;
+        const safePreviews = toSafePreviews(loaded);
         setFullVaults(loaded);
-        setVaults(
-          loaded.map((v) => ({
-            id: v.id,
-            name: v.name,
-            amount: v.amount,
-            currency: v.currency,
-            status: v.status as VaultStatus,
-            deadline: v.deadline,
-            progressPct: timelineProgress(v.createdAt, v.deadline),
-          })),
-        );
-        setVaultStatus(loaded.length === 0 ? "empty" : "data");
+        setVaults(safePreviews);
+        setVaultStatus(safePreviews.length === 0 ? "empty" : "data");
       })
       .catch(() => {
-        if (!cancelled) setVaultStatus("error");
+        if (!cancelled && currentRequest === requestId) setVaultStatus("error");
       });
     return () => {
       cancelled = true;
     };
-  }, [retryCount]);
+  }, [retryCount, requestId]);
 
-  const retryVaults = useCallback(() => setRetryCount((c) => c + 1), []);
+  const retryVaults = useCallback(() => {
+    setRetryCount((c) => c + 1);
+    setRequestId((r) => r + 1);
+  }, []);
 
   const computedSummary = useMemo(
     () => dashboardUtils.computeDashboardSummary(fullVaults),
@@ -222,7 +250,7 @@ export default function Dashboard({
     [computedSummary],
   );
   const memoizedActivity = useMemo(
-    () => dashboardUtils.processActivity(activity),
+    () => dashboardUtils.processActivity(sanitizeActivity(activity)),
     [activity],
   );
 
