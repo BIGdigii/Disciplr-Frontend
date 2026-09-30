@@ -332,4 +332,14 @@ describe('module shape', () => {
         }
       `);
   });
+
+  it('keeps every token-backed duration and easing value finite', () => {
+    for (const value of Object.values(duration)) {
+      expect(Number.isFinite(value)).toBe(true);
+    }
+    for (const curve of Object.values(ease)) {
+      expect(curve).toHaveLength(4);
+      expect(curve.every((value) => Number.isFinite(value))).toBe(true);
+    }
+  });
 });
