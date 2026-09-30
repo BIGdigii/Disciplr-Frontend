@@ -338,6 +338,76 @@ describe("CreateVault", () => {
       deadline: "2030-01-01T00:00",
     }));
   });
+
+  it("prevents duplicate confirmation while vault creation is pending", async () => {
+    mockUseWallet.mockReturnValue({
+      balance: "5000",
+      balanceStatus: "success",
+      address: "GBVZ3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK7L",
+      network: "TESTNET",
+    } as ReturnType<typeof useWallet>);
+
+    let resolveCreation!: (value: { id: string }) => void;
+    vi.mocked(createVault).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveCreation = resolve;
+      }) as ReturnType<typeof createVault>,
+    );
+
+    renderCreateVault();
+    fillField(/amount/i, "100");
+    fillField(/deadline/i, "2030-01-01T00:00");
+    fillField(/success destination/i, successAddress);
+    fillField(/failure destination/i, failureAddress);
+    fillFirstMilestone();
+
+    fireEvent.click(screen.getByRole("button", { name: /create vault/i }));
+    const confirmButton = screen.getByRole("button", { name: /confirm vault/i });
+    fireEvent.click(confirmButton);
+
+    expect(confirmButton).toBeDisabled();
+    expect(createVault).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(confirmButton);
+    expect(createVault).toHaveBeenCalledTimes(1);
+
+    resolveCreation({ id: "pending-creation" });
+    await screen.findByText("Vault Detail Page");
+  });
+
+  it("allows retrying after a failed creation attempt", async () => {
+    mockUseWallet.mockReturnValue({
+      balance: "5000",
+      balanceStatus: "success",
+      address: "GBVZ3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK7L",
+      network: "TESTNET",
+    } as ReturnType<typeof useWallet>);
+
+    vi.mocked(createVault)
+      .mockRejectedValueOnce(new Error("temporary service failure"))
+      .mockResolvedValueOnce({ id: "retry-success" } as any);
+
+    renderCreateVault();
+    fillField(/amount/i, "100");
+    fillField(/deadline/i, "2030-01-01T00:00");
+    fillField(/success destination/i, successAddress);
+    fillField(/failure destination/i, failureAddress);
+    fillFirstMilestone();
+
+    fireEvent.click(screen.getByRole("button", { name: /create vault/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirm vault/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "temporary service failure",
+    );
+    expect(createVault).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /confirm vault/i }));
+    await screen.findByText("Vault Detail Page");
+
+    expect(createVault).toHaveBeenCalledTimes(2);
+  });
+
   it("shows error and prevents submit when wallet is disconnected on confirm", async () => {
     mockUseWallet.mockReturnValue({
       balance: null,
