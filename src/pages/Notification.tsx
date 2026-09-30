@@ -95,7 +95,7 @@ export default function Notification() {
     }
     setCurrentNotification(filtered);
     setCurrentPage(1);
-  };
+  }, [currentFilterReadSeletion, currentFilterTypeSeletion, notifications]);
 
   useEffect(() => {
     filterNotification();
