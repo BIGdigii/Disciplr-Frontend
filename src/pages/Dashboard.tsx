@@ -19,7 +19,6 @@ import { listVaults } from "../services/vaultService";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-
 const ACTIVITY_CFG: Record<
   Activity["type"],
   { label: string; icon: string; color: string }
@@ -94,7 +93,6 @@ function SummaryCard({
   );
 }
 
-
 function SectionHeader({
   title,
   action,
@@ -134,23 +132,23 @@ function AtRiskSection({ vaults }: { vaults: VaultPreview[] }) {
   return (
     <div
       style={{
-        marginBottom: '1.75rem',
-        background: 'var(--danger-transparent)',
-        border: '1px solid var(--danger)',
-        borderRadius: 'var(--radius)',
-        padding: '1.25rem',
+        marginBottom: "1.75rem",
+        background: "var(--danger-transparent)",
+        border: "1px solid var(--danger)",
+        borderRadius: "var(--radius)",
+        padding: "1.25rem",
       }}
     >
       <SectionHeader title={`⚠️ At Risk (${atRiskVaults.length})`} />
       <Text
         role="caption"
         as="p"
-        style={{ color: 'var(--danger)', margin: '0 0 1rem' }}
+        style={{ color: "var(--danger)", margin: "0 0 1rem" }}
       >
         These vaults need immediate attention — their deadlines are approaching
         or critical.
       </Text>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         {atRiskVaults.map((v) => (
           <VaultCard
             key={v.id}
@@ -183,6 +181,7 @@ export default function Dashboard({
   >("loading");
   const [retryCount, setRetryCount] = useState(0);
 
+  // Load vaults asynchronously and ignore results after the component unmounts.
   useEffect(() => {
     let cancelled = false;
     setVaultStatus("loading");
