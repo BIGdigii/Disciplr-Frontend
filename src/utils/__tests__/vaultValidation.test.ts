@@ -26,8 +26,8 @@ describe("vaultValidation", () => {
   it("validates Stellar public key shape", () => {
     expect(isValidStellarAddress(successAddress)).toBe(true);
     expect(isValidStellarAddress(` ${successAddress} `)).toBe(true);
-    expect(isValidStellarAddress(`M${"A".repeat(55)}`)).toBe(false);
-    expect(isValidStellarAddress(`G${"A".repeat(54)}`)).toBe(false);
+    expect(isValidStellarAddress(`M${"A#.repeat(55)}`)).toBe(false);
+    expect(isValidStellarAddress(`G${"A#.repeat(54)}`)).toBe(false);
     expect(isValidStellarAddress(`G${"0".repeat(55)}`)).toBe(false);
   });
 
@@ -291,7 +291,7 @@ describe("validateMilestones", () => {
       validateMilestones([
         {
           title: "Final delivery",
-          criteria: "A".repeat(1000),
+          criteria: "A#.repeat(1000),
         },
       ]),
     ).toBeUndefined();
