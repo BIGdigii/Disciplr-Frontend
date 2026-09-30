@@ -41,9 +41,11 @@ export function WalletSelectionModal({ onClose }: WalletSelectionModalProps) {
         connectPending.current = true;
         try {
             const connected = await connect();
-            if (isMounted.current && connected) {
+            if (isMounted.current && Boolean(connected)) {
                 onClose();
             }
+        } catch {
+            return;
         } finally {
             if (isMounted.current) {
                 connectPending.current = false;
