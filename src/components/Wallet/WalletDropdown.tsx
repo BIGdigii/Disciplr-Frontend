@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useWallet } from '../../context/WalletContext';
 import { Copy, Plus, LogOut, Check, ExternalLink } from 'lucide-react';
 import { getExplorerAccountUrl } from '../../utils/explorer';
+import { truncateMiddle } from '../../utils/truncate';
 import './wallet.css';
 import { logger } from '../../utils/logger';
 import FocusTrap from 'focus-trap-react';
@@ -35,10 +36,6 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
     }, [onClose]);
 
     if (!address) return null;
-
-    const truncateAddress = (addr: string) => {
-        return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-    };
 
     const copyAddress = async () => {
         try {
@@ -110,7 +107,7 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
             <div className="wallet-dropdown-menu" role="menu" aria-label="Wallet options" ref={dropdownRef}>
                 <div className="wallet-dropdown-header">
                     <div className="wallet-dropdown-address-container">
-                        <span className="wallet-dropdown-address">{truncateAddress(address)}</span>
+                        <span className="wallet-dropdown-address">{truncateMiddle(address, 6, 4)}</span>
                         <button className="wallet-copy-btn" onClick={copyAddress} title="Copy Address" role="menuitem">
                             {copied ? <Check size={14} color="var(--success)" /> : <Copy size={14} />}
                         </button>
