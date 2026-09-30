@@ -26,8 +26,14 @@ export default function VerifierDashboard() {
   const navigate = useNavigate();
   const now = useCurrentTime();
   
-  const pendingValidations = useVerifierStore((state) => state.pendingValidations);
-  const validationHistory = useVerifierStore((state) => state.validationHistory);
+  // Defensive coalescing: a partially hydrated or malformed store snapshot
+  // (undefined/null slices) must render empty states instead of crashing the
+  // dashboard. This mirrors the null-tolerance already enforced by
+  // `computeVerifierMetrics` in ../utils/verifierMetrics.ts.
+  const pendingValidations =
+    useVerifierStore((state) => state.pendingValidations) ?? [];
+  const validationHistory =
+    useVerifierStore((state) => state.validationHistory) ?? [];
 
   const totalPending = pendingValidations.length;
   const totalCompleted = validationHistory.length;
