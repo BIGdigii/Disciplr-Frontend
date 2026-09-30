@@ -43,7 +43,7 @@ describe('AddressDisplay', () => {
             expect(el).toHaveAttribute('title', `Invalid address: ${INVALID}`);
             expect(el).toHaveAttribute('aria-label', `Invalid address ${INVALID}`);
             expect(el).toHaveStyle({ textDecoration: 'line-through' });
-            expect(el).toHaveStyle({ color: 'var(--danger)' });
+            expect(el).toHaveStyle({ color: 'var(--error)' });
         });
 
         it('renders valid addresses with default color and no strikethrough', () => {
