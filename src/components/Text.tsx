@@ -11,6 +11,8 @@ interface TextProps extends React.HTMLAttributes<HTMLElement> {
   children: React.ReactNode
 }
 
+const VALID_ROLES = new Set<TypographyRole>(['display', 'title', 'subtitle', 'body', 'caption', 'mono'])
+
 /**
  * Text component for applying consistent typography scales
  * 
@@ -24,12 +26,18 @@ interface TextProps extends React.HTMLAttributes<HTMLElement> {
  */
 export const Text = React.forwardRef<HTMLElement, TextProps>(
   ({ role, as: Component = 'span', className, ...props }, ref) => {
-    const typographyClass = getTypographyClass(role)
+    // Validation invariant: Fall back to 'body' if an invalid role is provided at runtime
+    const safeRole = VALID_ROLES.has(role) ? role : 'body'
+    
+    // Validation invariant: Ensure the component is a valid element string
+    const safeComponent = typeof Component === 'string' && /^[a-zA-Z0-9-]+$/.test(Component) ? Component : 'span'
+
+    const typographyClass = getTypographyClass(safeRole)
     const mergedClassName = className
       ? `${typographyClass} ${className}`
       : typographyClass
 
-    return React.createElement(Component as React.ElementType, {
+    return React.createElement(safeComponent as React.ElementType, {
       ref,
       className: mergedClassName,
       ...props,
