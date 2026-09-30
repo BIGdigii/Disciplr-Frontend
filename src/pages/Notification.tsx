@@ -280,6 +280,7 @@ export default function Notification() {
         onPageChange={setCurrentPage}
         ariaLabel="Notifications pagination"
         className="mt-8"
+        showJumpToPage
       />
 
       <ConfirmationModal
