@@ -7,9 +7,52 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from './logger';
 
+/**
+ * Invariants enforced by this module:
+ *
+ * 1. `loadTokens` only reads files whose basename matches `^[^/\\]+\.json$`
+ *    and whose resolved path stays inside `<cwd>/tokens`. Any other input
+ *    (absolute paths, traversal segments, non-`.json` extensions, empty
+ *    strings, non-string values) is rejected with a deterministic error.
+ * 2. `loadTokens` never returns a partially-parsed or non-object payload.
+ *    Malformed JSON, non-object roots (arrays, primitives, null), and
+ *    unreadable files all throw so callers cannot silently consume
+ *    inconsistent state.
+ * 3. `getAllTokens` is best-effort across the known token file set: a
+ *    failure for one file is logged and does not abort the merge, but the
+ *    returned object is always a fresh, fully-owned plain object (no
+ *    prototype pollution, no shared references between calls).
+ * 4. `getTokenValue` is pure with respect to the merged token tree and
+ *    returns `undefined` for empty, non-string, or unresolvable paths. It
+ *    never throws on malformed input.
+ */
+
+const TOKEN_FILE_PATTERN = /^[^/\\]+\.json$/;
+
+const KNOWN_TOKEN_FILES = [
+  'colors.json',
+  'typography.json',
+  'spacing.json',
+  'shadows.json',
+  'motion.json',
+  'borders.json',
+  'z-index.json',
+  'opacity.json',
+  'breakpoints.json',
+  'toast.json',
+] as const;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value)
+  );
+}
+
 export function loadTokens(tokenFile: string): DesignTokens {
   // Reject anything that isn't a plain basename with a .json extension
-  if (!/^[^/\\]+\.json$/.test(tokenFile)) {
+  if (typeof tokenFile !== 'string' || !TOKEN_FILE_PATTERN.test(tokenFile)) {
     throw new Error(`Invalid token file name: "${tokenFile}"`);
   }
 
@@ -21,18 +64,40 @@ export function loadTokens(tokenFile: string): DesignTokens {
     throw new Error(`Path traversal detected for token file: "${tokenFile}"`);
   }
 
-  const tokenData = fs.readFileSync(tokenPath, 'utf-8');
-  return JSON.parse(tokenData) as DesignTokens;
+  let tokenData: string;
+  try {
+    tokenData = fs.readFileSync(tokenPath, 'utf-8');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read token file "${tokenFile}": ${message}`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(tokenData);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Malformed JSON in token file "${tokenFile}": ${message}`);
+  }
+
+  if (!isPlainObject(parsed)) {
+    throw new Error(
+      `Token file "${tokenFile}" must contain a JSON object at the root`,
+    );
+  }
+
+  return parsed as DesignTokens;
 }
 
 export function getAllTokens(): DesignTokens {
-  const tokenFiles = ['colors.json', 'typography.json', 'spacing.json', 'shadows.json', 'motion.json', 'borders.json', 'z-index.json', 'opacity.json', 'breakpoints.json', 'toast.json'];
-  const allTokens: DesignTokens = {};
+  const allTokens: DesignTokens = Object.create(null) as DesignTokens;
   
-  tokenFiles.forEach(file => {
+  KNOWN_TOKEN_FILES.forEach(file => {
     try {
       const tokens = loadTokens(file);
-      Object.assign(allTokens, tokens);
+      if (isPlainObject(tokens)) {
+        Object.assign(allTokens, tokens);
+      }
     } catch (error) {
       logger.warn(`Failed to load ${file}:`, error);
     }
@@ -61,7 +126,7 @@ export function getTokenValue(
   path: string,
   mode: 'light' | 'dark' = 'light',
 ): unknown {
-  if (!path) return undefined;
+  if (typeof path !== 'string' || path.length === 0) return undefined;
 
   let node: unknown = getAllTokens();
 
@@ -72,11 +137,7 @@ export function getTokenValue(
   }
 
   // If the resolved node is a plain object with both mode keys, resolve by mode.
-  if (
-    node !== null &&
-    typeof node === 'object' &&
-    !Array.isArray(node)
-  ) {
+  if (isPlainObject(node)) {
     const record = node as Record<string, unknown>;
 
     // Mode-aware resolution: node has 'light' or 'dark' sub-objects that are
