@@ -79,7 +79,7 @@ describe('VerifierDashboard', () => {
         dispatchEvent: vi.fn(),
       })),
     });
-    (useVerifierStore as any).mockImplementation((selector: any) => selector({
+    (useVerifierStore as any).mockImplementation((selector: any) => selector( {
       pendingValidations: pendingTasks,
       validationHistory: historyTasks,
     }));
@@ -232,7 +232,7 @@ describe('VerifierDashboard', () => {
     });
 
     it('shows empty message when no history exists', () => {
-      (useVerifierStore as any).mockImplementation((selector: any) => selector({
+      (useVerifierStore as any).mockImplementation((selector: any) => selector( {
         pendingValidations: [],
         validationHistory: [],
       }));
@@ -298,7 +298,7 @@ describe('VerifierDashboard', () => {
         decidedAt: '2026-06-02',
       };
 
-      (useVerifierStore as any).mockImplementation((selector: any) => selector({
+      (useVerifierStore as any).mockImplementation((selector: any) => selector( {
         pendingValidations: [],
         validationHistory: [pendingHistoryTask],
       }));

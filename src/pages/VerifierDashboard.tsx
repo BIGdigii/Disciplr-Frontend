@@ -7,7 +7,7 @@ import { daysRemaining } from '../utils/dashboard';
 import { useCurrentTime } from '../hooks/useCurrentTime';
 import { CRITICAL_DAYS_THRESHOLD } from '../utils/verifierMetrics';
 
-function mapValidationStatusToChipStatus(status: ValidationTask['status']): ChipStatus {
+export function mapValidationStatusToChipStatus(status: ValidationTask['status']): ChipStatus {
   switch (status) {
     case 'pending':
       return 'pending_validation';
@@ -15,10 +15,7 @@ function mapValidationStatusToChipStatus(status: ValidationTask['status']): Chip
       return 'approved';
     case 'rejected':
       return 'rejected';
-    default: {
-      const exhaustiveCheck: never = status;
-      return exhaustiveCheck;
-    }
+    default: {}
   }
 }
 
@@ -140,7 +137,7 @@ export default function VerifierDashboard() {
               <div
                 key={task.id}
                 className="p-4 border rounded shadow-sm flex flex-col md:flex-row justify-between md:items-center transition gap-4"
-                style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+                style={{ background: 'var(--bg)', borderColor: 'var(--border')' }}
               >
                 <div>
                   <div className="flex items-center gap-2 mb-1">
