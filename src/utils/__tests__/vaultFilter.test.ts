@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { filterVaults, sortVaults } from '../vaultFilter';
+import type { VaultFilters } from '../vaultFilter';
 import type { Vault } from '../../types/vault';
 
 const createVault = (overrides: Partial<Vault> = {}): Vault => ({
@@ -66,6 +67,13 @@ describe('filterVaults', () => {
   it('returns all vaults when empty filter options are provided', () => {
     const result = filterVaults(mockVaults, {});
     expect(result).toEqual(mockVaults);
+  });
+
+  it('accepts a VaultFilters object', () => {
+    const filters: VaultFilters = { status: 'active', query: 'alpha' };
+    const result = filterVaults(mockVaults, filters);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('1');
   });
 
   it('returns all vaults when status is "all"', () => {
