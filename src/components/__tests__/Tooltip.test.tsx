@@ -1,10 +1,7 @@
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Tooltip } from "../Tooltip";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+import zIndexTokens from "../../../design-system/tokens/z-index.json";
 
 function renderTooltip(content = "Tooltip text", position: "top" | "bottom" = "top") {
   return render(
@@ -13,10 +10,6 @@ function renderTooltip(content = "Tooltip text", position: "top" | "bottom" = "t
     </Tooltip>,
   );
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe("Tooltip", () => {
   beforeEach(() => {
@@ -28,12 +21,9 @@ describe("Tooltip", () => {
     vi.useRealTimers();
   });
 
-  // ── Rendering ─────────────────────────────────────────────────────────────
-
   it("renders children without showing the tooltip initially", () => {
     renderTooltip();
     expect(screen.getByRole("button", { name: "Trigger" })).toBeInTheDocument();
-    // tooltip role exists in DOM (for aria linkage) but is not visible
     const tooltip = screen.getByRole("tooltip", { hidden: true });
     expect(tooltip).toBeInTheDocument();
     expect(tooltip).toHaveStyle({ visibility: "hidden" });
@@ -43,8 +33,6 @@ describe("Tooltip", () => {
     renderTooltip("Full hash value");
     expect(screen.getByRole("tooltip", { hidden: true })).toHaveTextContent("Full hash value");
   });
-
-  // ── Hover ─────────────────────────────────────────────────────────────────
 
   it("shows the tooltip on mouseenter", () => {
     renderTooltip();
@@ -63,8 +51,6 @@ describe("Tooltip", () => {
     expect(screen.getByRole("tooltip", { hidden: true })).toHaveStyle({ visibility: "hidden" });
   });
 
-  // ── Focus ─────────────────────────────────────────────────────────────────
-
   it("shows the tooltip on focus", () => {
     renderTooltip();
     fireEvent.focus(screen.getByRole("button"));
@@ -81,8 +67,6 @@ describe("Tooltip", () => {
     act(() => vi.runAllTimers());
     expect(screen.getByRole("tooltip", { hidden: true })).toHaveStyle({ visibility: "hidden" });
   });
-
-  // ── Escape key ────────────────────────────────────────────────────────────
 
   it("dismisses the tooltip when Escape is pressed", () => {
     renderTooltip();
@@ -106,8 +90,6 @@ describe("Tooltip", () => {
     fireEvent.keyDown(document, { key: "Enter" });
     expect(screen.getByRole("tooltip")).toHaveStyle({ visibility: "visible" });
   });
-
-  // ── aria-describedby wiring ────────────────────────────────────────────────
 
   it("sets aria-describedby on the trigger pointing to the tooltip id when visible", () => {
     renderTooltip();
@@ -147,13 +129,10 @@ describe("Tooltip", () => {
     expect(screen.getByRole("tooltip")).not.toHaveAttribute("aria-hidden", "true");
   });
 
-  // ── Position prop ─────────────────────────────────────────────────────────
-
   it("applies bottom positioning style when position='bottom'", () => {
     renderTooltip("tip", "bottom");
     fireEvent.mouseEnter(screen.getByRole("button"));
     const tooltip = screen.getByRole("tooltip");
-    // bottom-positioned tooltip has a `top` offset, not a `bottom` offset
     expect(tooltip).toHaveStyle({ top: "calc(100% + 6px)" });
   });
 
@@ -164,24 +143,52 @@ describe("Tooltip", () => {
     expect(tooltip).toHaveStyle({ bottom: "calc(100% + 6px)" });
   });
 
-  // ── Re-show cancels pending hide timer ───────────────────────────────────
-
   it("re-showing before hide timer fires keeps tooltip visible", () => {
     renderTooltip();
     const trigger = screen.getByRole("button");
 
     fireEvent.mouseEnter(trigger);
-    fireEvent.mouseLeave(trigger); // starts hide timer
-    fireEvent.mouseEnter(trigger); // cancels timer, re-shows
+    fireEvent.mouseLeave(trigger);
+    fireEvent.mouseEnter(trigger);
 
     act(() => vi.runAllTimers());
     expect(screen.getByRole("tooltip")).toHaveStyle({ visibility: "visible" });
   });
 
-  // ── Styling & Stacking ───────────────────────────────────────────────────
-
   it("applies the correct design system z-index token", () => {
     renderTooltip();
+    const tooltip = screen.getByRole("tooltip", { hidden: true });
+    expect(tooltip).toHaveStyle({ zIndex: "var(--z-index-tooltip, 150)" });
+  });
+
+  it("maintains the z-index token when visible", () => {
+    renderTooltip();
+    const trigger = screen.getByRole("button");
+    fireEvent.mouseEnter(trigger);
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip).toHaveStyle({ zIndex: "var(--z-index-tooltip, 150)" });
+  });
+
+  it("verifies the tooltip token preserves the documented stacking hierarchy", () => {
+    const tooltipValue = zIndexTokens.zIndex.tooltip.$value;
+    const headerValue = zIndexTokens.zIndex.header.$value;
+    const baseValue = zIndexTokens.zIndex.base.$value;
+    const drawerValue = zIndexTokens.zIndex.drawer.$value;
+    const modalValue = zIndexTokens.zIndex.modal.$value;
+
+    expect(tooltipValue).toBe(150);
+    expect(tooltipValue).toBeGreaterThan(headerValue);
+    expect(tooltipValue).toBeGreaterThan(baseValue);
+    expect(tooltipValue).toBeLessThan(drawerValue);
+    expect(tooltipValue).toBeLessThan(modalValue);
+  });
+
+  it("preserves z-index styling when custom className is provided", () => {
+    render(
+      <Tooltip content="Custom class test" className="custom-wrapper-class">
+        <button type="button">Trigger</button>
+      </Tooltip>,
+    );
     const tooltip = screen.getByRole("tooltip", { hidden: true });
     expect(tooltip).toHaveStyle({ zIndex: "var(--z-index-tooltip, 150)" });
   });
