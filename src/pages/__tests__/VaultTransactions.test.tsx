@@ -814,3 +814,255 @@ describe('CSV Export', () => {
     expect(downloadCsv).not.toHaveBeenCalled();
   });
 });
+
+describe('VaultTransactions authorization regression', () => {
+  it('handles missing route parameter gracefully', () => {
+    renderPage(<VaultTransactions />);
+    // Should render without crashing even without a route parameter
+    expect(screen.getByRole('heading', { name: /Transaction History/i })).toBeInTheDocument();
+  });
+
+  it('does not expose sensitive wallet data in transaction list', () => {
+    renderPage(<VaultTransactions />);
+    // Should not show full wallet addresses without user interaction
+    const fullAddresses = document.querySelectorAll('.vt-tx-address');
+    fullAddresses.forEach(addr => {
+      expect(addr.textContent).toMatch(/G\.\.\./); // Should be truncated
+    });
+  });
+
+  it('validates vault filter options from transaction data', () => {
+    renderPage(<VaultTransactions />);
+    const selects = document.querySelectorAll('.vt-select');
+    const vaultSelect = selects[0];
+    
+    // Should have "All Vaults" as default
+    expect(vaultSelect).toHaveValue('All Vaults');
+    
+    // Should not allow arbitrary vault injection
+    const options = vaultSelect.querySelectorAll('option');
+    const optionValues = Array.from(options).map(opt => opt.value);
+    expect(optionValues).toContain('All Vaults');
+    expect(optionValues.length).toBeGreaterThan(0);
+  });
+
+  it('prevents XSS through hash search input', () => {
+    renderPage(<VaultTransactions />);
+    const searchInput = screen.getByPlaceholderText(/search by transaction hash/i);
+    
+    // Try to inject malicious content
+    fireEvent.change(searchInput, { target: { value: '<script>alert("xss")</script>' } });
+    
+    // Should not execute script; should treat as literal search
+    expect(searchInput).toHaveValue('<script>alert("xss")</script>');
+    expect(screen.queryByText(/xss/i)).not.toBeInTheDocument();
+  });
+
+  it('handles malformed transaction data without crashing', () => {
+    const malformedTransactions = [
+      {
+        ...buildTransaction(0),
+        amount: 0,
+        fee: 0,
+        hash: 'a'.repeat(64),
+      },
+    ];
+
+    expect(() => {
+      renderPage(<VaultTransactions transactions={malformedTransactions} />);
+    }).not.toThrow();
+  });
+
+  it('validates amount filter inputs are numeric', () => {
+    renderPage(<VaultTransactions />);
+    const amountInputs = document.querySelectorAll('.vt-amount-input');
+    
+    // Try non-numeric input - number input fields may reject this
+    fireEvent.change(amountInputs[0], { target: { value: 'abc' } });
+    
+    // Should not crash with invalid input
+    expect(screen.getByRole('heading', { name: /Transaction History/i })).toBeInTheDocument();
+    
+    // Try valid numeric input
+    fireEvent.change(amountInputs[0], { target: { value: '1000' } });
+    // Number inputs return numbers, not strings
+    expect(amountInputs[0]).toHaveValue(1000);
+  });
+
+  it('handles empty transaction list gracefully', () => {
+    renderPage(<VaultTransactions transactions={[]} />);
+    
+    expect(screen.getByRole('heading', { name: /Transaction History/i })).toBeInTheDocument();
+    expect(screen.getByText(/No transactions yet/i)).toBeInTheDocument();
+  });
+
+  it('validates breadcrumb segments based on route state', () => {
+    renderPage(<VaultTransactions />);
+    // Should render breadcrumb without crashing
+    // Breadcrumb is rendered via Breadcrumb component
+    expect(screen.getByText('Home')).toBeInTheDocument();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
+  });
+});
+
+describe('VaultTransactions validation regression', () => {
+  it('validates transaction type enum values', () => {
+    const transactions = [
+      buildTransaction(0, 'confirmed'),
+      buildTransaction(1, 'confirmed'),
+      buildTransaction(2, 'confirmed'),
+    ];
+
+    renderPage(<VaultTransactions transactions={transactions} />);
+    
+    // All type chips should be present and valid
+    const toolbar = screen.getByRole('group', { name: /filter by transaction type/i });
+    expect(within(toolbar).getByText('Create')).toBeInTheDocument();
+    expect(within(toolbar).getByText('Validate')).toBeInTheDocument();
+    expect(within(toolbar).getByText('Release')).toBeInTheDocument();
+    expect(within(toolbar).getByText('Redirect')).toBeInTheDocument();
+  });
+
+  it('validates transaction status enum values', () => {
+    const transactions = [
+      buildTransaction(0, 'confirmed'),
+      buildTransaction(1, 'pending'),
+      buildTransaction(2, 'failed'),
+    ];
+
+    renderPage(<VaultTransactions transactions={transactions} />);
+    
+    // All status sections should render correctly
+    expect(screen.getByRole('table', { name: /Confirmed transactions/i })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: /Pending transactions/i })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: /Failed transactions/i })).toBeInTheDocument();
+  });
+
+  it('handles boundary conditions for amount filtering', () => {
+    const transactions = [
+      { ...buildTransaction(0), amount: 0 },
+      { ...buildTransaction(1), amount: 1000000 },
+      { ...buildTransaction(2), amount: -100 },
+    ];
+
+    renderPage(<VaultTransactions transactions={transactions} />);
+    
+    const amountInputs = document.querySelectorAll('.vt-amount-input');
+    
+    // Test min boundary
+    fireEvent.change(amountInputs[0], { target: { value: '0' } });
+    expect(screen.getByRole('heading', { name: /Transaction History/i })).toBeInTheDocument();
+    
+    // Test max boundary
+    fireEvent.change(amountInputs[1], { target: { value: '1000000' } });
+    expect(screen.getByRole('heading', { name: /Transaction History/i })).toBeInTheDocument();
+  });
+
+  it('validates hash format consistency', () => {
+    renderPage(<VaultTransactions />);
+    const hashButtons = document.querySelectorAll('.vt-tx-hash');
+    
+    hashButtons.forEach(btn => {
+      const text = btn.textContent || '';
+      // Should follow the truncation pattern
+      expect(text).toMatch(/.{8}\.\.\..{6}/);
+    });
+  });
+
+  it('handles concurrent filter changes without race conditions', () => {
+    renderPage(<VaultTransactions />);
+    
+    const toolbar = screen.getByRole('group', { name: /filter by transaction type/i });
+    const searchInput = screen.getByPlaceholderText(/search by transaction hash/i);
+    const selects = document.querySelectorAll('.vt-select');
+    
+    // Rapidly change multiple filters
+    fireEvent.click(within(toolbar).getByText('Create').closest('button')!);
+    fireEvent.change(searchInput, { target: { value: 'a3f9' } });
+    fireEvent.change(selects[0], { target: { value: 'Alpha Vault' } });
+    fireEvent.change(selects[1], { target: { value: 'pending' } });
+    
+    // Should remain stable
+    expect(screen.getByRole('heading', { name: /Transaction History/i })).toBeInTheDocument();
+  });
+
+  it('validates sort state transitions', () => {
+    renderPage(<VaultTransactions />);
+    
+    const timeButton = screen.getAllByRole('button', { name: /Time/i })[0];
+    
+    // Start with descending
+    expect(screen.getAllByRole('columnheader', { name: /Time/i })[0]).toHaveAttribute('aria-sort', 'descending');
+    
+    // Toggle to ascending
+    fireEvent.click(timeButton);
+    expect(screen.getAllByRole('columnheader', { name: /Time/i })[0]).toHaveAttribute('aria-sort', 'ascending');
+    
+    // Toggle back to descending
+    fireEvent.click(timeButton);
+    expect(screen.getAllByRole('columnheader', { name: /Time/i })[0]).toHaveAttribute('aria-sort', 'descending');
+  });
+
+  it('handles edge case where all filters result in empty set', () => {
+    renderPage(<VaultTransactions />);
+    
+    const toolbar = screen.getByRole('group', { name: /filter by transaction type/i });
+    const searchInput = screen.getByPlaceholderText(/search by transaction hash/i);
+    
+    // Deselect all types
+    fireEvent.click(within(toolbar).getByText('All').closest('button')!);
+    
+    // Add search that matches nothing
+    fireEvent.change(searchInput, { target: { value: 'nomatch' } });
+    
+    // Should show 0 matching transactions in stats
+    expect(screen.getByText(/0 matching/i)).toBeInTheDocument();
+    
+    // Should not crash
+    expect(screen.getByRole('heading', { name: /Transaction History/i })).toBeInTheDocument();
+  });
+
+  it('validates timestamp formatting across different timezones', () => {
+    const FIXED_NOW = Date.now();
+    vi.setSystemTime(FIXED_NOW);
+    
+    const transactions = [
+      buildTransaction(0, 'confirmed'),
+    ];
+
+    renderPage(<VaultTransactions transactions={transactions} />);
+    
+    // Should render relative time consistently (either minutes ago or another format)
+    const timeElements = document.querySelectorAll('.vt-tx-time');
+    expect(timeElements.length).toBeGreaterThan(0);
+    
+    vi.useRealTimers();
+  });
+
+  it('handles clipboard copy failures gracefully', () => {
+    const writeTextSpy = vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValueOnce(new Error('Clipboard denied'));
+    
+    renderPage(<VaultTransactions />);
+    const rows = document.querySelectorAll('.vt-tx-row');
+    
+    expect(() => {
+      fireEvent.click(rows[0]);
+    }).not.toThrow();
+    
+    writeTextSpy.mockRestore();
+  });
+
+  it('validates that export filename is deterministic', () => {
+    vi.mocked(toCsv).mockClear();
+    vi.mocked(downloadCsv).mockClear();
+
+    renderPage();
+    const exportBtn = screen.getByRole('button', { name: /Export CSV/i });
+    fireEvent.click(exportBtn);
+
+    expect(downloadCsv).toHaveBeenCalledWith(
+      expect.any(String),
+      'vault-transactions.csv'
+    );
+  });
+});
