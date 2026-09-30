@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef, Suspense, lazy } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom' // Ensure search params are available
 import { useTheme } from '../context/ThemeContext'
 import { usePrefersReducedMotion } from '../utils/usePrefersReducedMotion'
 import { computeAnalyticsKpis, formatCurrency, formatPercentage, type AnalyticsDataPoint } from '../utils/analyticsKpis'
