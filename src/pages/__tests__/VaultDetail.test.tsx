@@ -1,3 +1,4 @@
+import { CONTRACT_ADDRESS } from '@/__tests__/fixtures/stellarAddresses';
 import {
   fireEvent,
   render,
@@ -470,7 +471,7 @@ describe("VaultDetail", () => {
     });
 
     it("renders the explorer link pointing to the testnet contract URL", async () => {
-      const validContractAddress = `C${"A".repeat(55)}`;
+      const validContractAddress = CONTRACT_ADDRESS;
       MASTER_VAULTS["1"].contractAddress = validContractAddress;
 
       renderVaultDetail("1");

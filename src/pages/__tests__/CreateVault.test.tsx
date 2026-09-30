@@ -1,3 +1,4 @@
+import { ACCOUNT_A, ACCOUNT_B } from '@/__tests__/fixtures/stellarAddresses';
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -26,8 +27,8 @@ import { useWallet } from "../../context/WalletContext";
 import { createVault } from "../../services/vaultService";
 const mockUseWallet = vi.mocked(useWallet);
 
-const successAddress = `G${"A".repeat(55)}`;
-const failureAddress = `G${"B".repeat(55)}`;
+const successAddress = ACCOUNT_A;
+const failureAddress = ACCOUNT_B;
 
 function fillField(label: RegExp, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
