@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWallet } from '../../context/WalletContext';
 import { Copy, Plus, LogOut, Check, ExternalLink } from 'lucide-react';
 import { getExplorerAccountUrl } from '../../utils/explorer';
@@ -16,6 +16,8 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
     const [copied, setCopied] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLElement | null>(null);
+    const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const mountedRef = useRef(true);
 
     useEffect(() => {
         triggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -34,6 +36,27 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
         };
     }, [onClose]);
 
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+            if (copyResetTimerRef.current !== null) {
+                clearTimeout(copyResetTimerRef.current);
+                copyResetTimerRef.current = null;
+            }
+        };
+    }, []);
+
+    // Reset the "copied" indicator whenever the address or network changes so
+    // stale success state cannot be attributed to a different account/network.
+    useEffect(() => {
+        setCopied(false);
+        if (copyResetTimerRef.current !== null) {
+            clearTimeout(copyResetTimerRef.current);
+            copyResetTimerRef.current = null;
+        }
+    }, [address, network]);
+
     if (!address) return null;
 
     const truncateAddress = (addr: string) => {
@@ -43,15 +66,40 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
     const copyAddress = async () => {
         try {
             await navigator.clipboard.writeText(address);
+            if (!mountedRef.current) return;
             setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+            if (copyResetTimerRef.current !== null) {
+                clearTimeout(copyResetTimerRef.current);
+            }
+            copyResetTimerRef.current = setTimeout(() => {
+                copyResetTimerRef.current = null;
+                if (mountedRef.current) {
+                    setCopied(false);
+                }
+            }, 2000);
         } catch (err) {
             logger.error('Failed to copy', err);
         }
     };
 
     const openExplorer = () => {
-        const url = getExplorerAccountUrl(address, network);
+        // Validate the address before constructing an explorer URL. An empty or
+        // malformed address must not produce a navigable link.
+        if (typeof address !== 'string' || address.trim().length === 0) {
+            logger.error('Cannot open explorer: missing wallet address');
+            return;
+        }
+        let url: string;
+        try {
+            url = getExplorerAccountUrl(address, network);
+        } catch (err) {
+            logger.error('Failed to build explorer URL', err);
+            return;
+        }
+        if (typeof url !== 'string' || url.length === 0) {
+            logger.error('Cannot open explorer: empty URL');
+            return;
+        }
         const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
         if (newWindow) newWindow.opener = null;
     };
@@ -111,7 +159,7 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
                 <div className="wallet-dropdown-header">
                     <div className="wallet-dropdown-address-container">
                         <span className="wallet-dropdown-address">{truncateAddress(address)}</span>
-                        <button className="wallet-copy-btn" onClick={copyAddress} title="Copy Address" role="menuitem">
+                        <button className="wallet-copy-btn" onClick={copyAddress} title="Copy Address" role="menuitem" aria-label={copied ? 'Address copied' : 'Copy address'}>
                             {copied ? <Check size={14} color="var(--success)" /> : <Copy size={14} />}
                         </button>
                     </div>
