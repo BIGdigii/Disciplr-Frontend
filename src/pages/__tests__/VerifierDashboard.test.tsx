@@ -79,7 +79,7 @@ describe('VerifierDashboard', () => {
         dispatchEvent: vi.fn(),
       })),
     });
-    (useVerifierStore as any).mockImplementation((selector: any) => selector({
+    (useVerifierStore as any).mockImplementation((selector: any) => selector( {
       pendingValidations: pendingTasks,
       validationHistory: historyTasks,
     }));
@@ -232,7 +232,7 @@ describe('VerifierDashboard', () => {
     });
 
     it('shows empty message when no history exists', () => {
-      (useVerifierStore as any).mockImplementation((selector: any) => selector({
+      (useVerifierStore as any).mockImplementation((selector: any) => selector( {
         pendingValidations: [],
         validationHistory: [],
       }));
@@ -298,7 +298,7 @@ describe('VerifierDashboard', () => {
         decidedAt: '2026-06-02',
       };
 
-      (useVerifierStore as any).mockImplementation((selector: any) => selector({
+      (useVerifierStore as any).mockImplementation((selector: any) => selector( {
         pendingValidations: [],
         validationHistory: [pendingHistoryTask],
       }));
@@ -308,6 +308,115 @@ describe('VerifierDashboard', () => {
       expect(screen.getByText('Pending Test Vault')).toBeInTheDocument();
       expect(screen.getByText('Pending Validation')).toBeInTheDocument();
       expect(screen.queryByText('Cancelled')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('authorization and validation regression coverage', () => {
+    it('redirects to login when the store reports an unauthenticated verifier', () => {
+      (useVerifierStore as any).mockImplementation((selector: any) => selector({
+        pendingValidations: pendingTasks,
+        validationHistory: historyTasks,
+        authorized: false,
+      }));
+      renderPage();
+      expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true });
+      expect(screen.queryByText('Verifier Dashboard')).not.toBeInTheDocument();
+    });
+
+    it('renders the dashboard when the store reports an authorized verifier', () => {
+      (useVerifierStore as any).mockImplementation((selector: any) => selector({
+        pendingValidations: pendingTasks,
+        validationHistory: historyTasks,
+        authorized: true,
+      }));
+      renderPage();
+      expect(screen.getByText('Verifier Dashboard')).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalledWith('/login', expect.anything);
+    });
+
+    it('treats a missing authorization flag as authorized for backward compatibility', () => {
+      renderPage();
+      expect(screen.getByText('Verifier Dashboard')).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled('/login', expect.anything);
+    });
+
+    it('filters out malformed pending tasks without crashing', () => {
+      (useVerifierStore as any).mockImplementation((selector: any) => selector({
+        pendingValidations: [
+          pendingTasks[0],
+          { id: 'v-bad', vaultName: '' },
+          null,
+          undefined,
+        ],
+        validationHistory: [],
+      }));
+      renderPage();
+      expect(screen.getByText('Alpha Vault')).toBeInTheDocument();
+      expect(screen.getByText('Total Assigned').parentElement).toHaveTextContent('1');
+    });
+
+    it('filters out malformed history entries without crashing', () => {
+      (useVerifierStore as any).mockImplementation((selector: any) => selector( {
+        pendingValidations: [],
+        validationHistory: [
+          historyTasks[0],
+          { id: 'h-bad', vaultName: '' },
+          null,
+        ],
+      }));
+      renderPage();
+      expect(screen.getByText('Gamma Vault')).toBeInTheDocument();
+      expect(screen.getByText('Completed').parentElement).toHaveTextContent('1');
+    });
+
+    it('treats non-array store slices as empty without crashing', () => {
+      (useVerifierStore as any).mockImplementation((selector: any) => selector({
+        pendingValidations: null,
+        validationHistory: undefined,
+      }));
+      renderPage();
+      expect(screen.getByText(/no pending validations/i)).toBeInTheDocument();
+      expect(screen.getByText('No recent decisions found.')).toBeInTheDocument();
+    });
+
+    it('ignores tasks with invalid deadlines when computing days remaining', () => {
+      (useVerifierStore as any).mockImplementation((selector: any) => selector({
+        pendingValidations: [
+          {
+            id: 'v-bad-deadline',
+            vaultName: 'Bad Deadline Vault',
+            owner: '0x0000',
+            amount: '1 USDC',
+            deadline: 'not-a-date',
+            status: 'pending',
+            milestone: 'Phase 1',
+          },
+        ],
+        validationHistory: [],
+      }));
+      renderPage();
+      expect(screen.getByText('Bad Deadline Vault')).toBeInTheDocument();
+      expect(screen.queryByText(/NaN days left/i)).not.toBeInTheDocument();
+    });
+
+    it('does not navigate to a task detail when the task id is missing', () => {
+      (useVerifierStore as any).mockImplementation((selector: any) => selector( {
+        pendingValidations: [
+          {
+            id: '',
+            vaultName: 'No ID Vault',
+            owner: '0x0000',
+            amount: '1 USDC',
+            deadline: '2026-07-01',
+            status: 'pending',
+            milestone: 'Phase 1',
+          },
+        ],
+        validationHistory: [],
+      }));
+      renderPage();
+      expect(screen.getByText('No ID Vault')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Review No ID Vault/ })).not.toBeInTheDocument();
     });
   });
 });
