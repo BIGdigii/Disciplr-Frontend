@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, MemoryRouter, useInRouterContext } from "react-router-dom";
 import { StatusChip } from "../components/StatusChip";
 import { Text } from "../components/Text";
@@ -39,6 +39,15 @@ function calculateProgressPct(vault: Vault): number {
   return Math.round((validated / vault.milestones.length) * 100);
 }
 
+/**
+ * Invariant: a fetch result is only applied when it is the latest in-flight
+ * request. Concurrent retries or prop-driven refetches must not allow a stale
+ * response to overwrite a newer one (last-write-wins on the newest request).
+ */
+function isVaultArray(value: unknown): value is Vault[] {
+  return Array.isArray(value);
+}
+
 const DEFAULT_FETCH = () => listVaults();
 
 function Skeleton() {
@@ -60,6 +69,8 @@ interface VaultsInnerProps {
   fetchVaults?: () => Promise<Vault[]>;
 }
 
+const MAX_RETRIES = 5;
+
 export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
   const [vaults, setVaults] = useState<Vault[]>([]);
   const [status, setStatus] = useState<"loading" | "empty" | "data" | "error">(
@@ -78,34 +89,54 @@ export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
   const fetchRef = useRef(fetchVaults);
   fetchRef.current = fetchVaults;
 
+  // Monotonic request id: only the newest request may commit state. This
+  // guards against out-of-order resolution when retries or prop changes race.
+  const requestIdRef = useRef(0);
+
   useEffect(() => {
+    const requestId = ++requestIdRef.current;
     let cancelled = false;
     setStatus("loading");
-    fetchRef
-      .current()
+    Promise.resolve()
+      .then(() => fetchRef.current())
       .then((data) => {
-        if (cancelled) return;
+        if (cancelled || requestId !== requestIdRef.current) return;
+        if (!isVaultArray(data)) {
+          setVaults([]);
+          setStatus("error");
+          return;
+        }
         setVaults(data);
         setStatus(data.length === 0 ? "empty" : "data");
       })
       .catch(() => {
-        if (!cancelled) setStatus("error");
+        if (cancelled || requestId !== requestIdRef.current) return;
+        setStatus("error");
       });
     return () => {
       cancelled = true;
     };
   }, [retryCount]); // only re-run on explicit retry
 
-  const retry = useCallback(() => setRetryCount((c) => c + 1), []);
+  const retry = useCallback(
+    () => setRetryCount((c) => (c >= MAX_RETRIES ? c : c + 1)),
+    [],
+  );
 
   const handleViewChange = useCallback((newView: "list" | "grid") => {
     setViewMode(newView);
     setViewPreference(newView);
   }, []);
 
-  // Apply filters and sorting
-  const filteredVaults = filterVaults(vaults, filters);
-  const sortedVaults = sortVaults(filteredVaults, sortOptions);
+  // Apply filters and sorting. Memoized so identity is stable across renders
+  // that do not change inputs, keeping downstream rendering deterministic.
+  const sortedVaults = useMemo(() => {
+    const filtered = filterVaults(vaults, filters);
+    return sortVaults(filtered, sortOptions);
+  }, [vaults, filters, sortOptions]);
+
+  const hasActiveFilters =
+    filters.status !== "all" || filters.query.trim().length > 0;
 
   return (
     <div>
@@ -276,16 +307,29 @@ export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
         </div>
       )}
 
+      {status === "data" && sortedVaults.length === 0 && hasActiveFilters && (
+        <div
+          data-testid="no-matching-vaults"
+          style={{ textAlign: "center", padding: "3rem 1rem" }}
+        >
+          <Text role="body" as="p">
+            No vaults match your filters.
+          </Text>
+        </div>
+      )}
+
       {status === "error" && (
         <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
           <Text role="body" as="p">
             Failed to load vaults.
           </Text>
-          <button onClick={retry}>Retry</button>
+          <button onClick={retry} disabled={retryCount >= MAX_RETRIES}>
+            {retryCount >= MAX_RETRIES ? "Retry limit reached" : "Retry"}
+          </button>
         </div>
       )}
 
-      {status === "data" && (
+      {status === "data" && sortedVaults.length > 0 && (
         <>
           {viewMode === "list" && (
             <div
