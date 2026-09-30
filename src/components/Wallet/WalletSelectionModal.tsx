@@ -41,9 +41,14 @@ export function WalletSelectionModal({ onClose }: WalletSelectionModalProps) {
         connectPending.current = true;
         try {
             const connected = await connect();
-            if (isMounted.current && connected) {
+            // Only close modal if connection succeeded (connect() returned true).
+            // On failed connection attempts (Freighter not installed, user rejects access,
+            // network error), leave the modal open so the error message remains visible.
+            if (isMounted.current && Boolean(connected)) {
                 onClose();
             }
+        } catch {
+            // Keep modal open so error remains visible if connect() unexpectedly rejects
         } finally {
             if (isMounted.current) {
                 connectPending.current = false;
