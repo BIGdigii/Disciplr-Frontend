@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import CreateVault from "../CreateVault";
 
 vi.mock("../../context/WalletContext", () => ({
-  useWallet: vi.fn(() => ({ balance: null, balanceStatus: "idle" })),
+  useWallet: vi.fn(() => ({ balance: null, balanceStatus: "idle", address: `G${"C".repeat(55)}`, network: "TESTNET" })),
 }));
 
 const mockNavigate = vi.fn();
@@ -31,6 +31,8 @@ describe("CreateVault Flow - Integration Tests", () => {
     mockUseWallet.mockReturnValue({
       balance: null,
       balanceStatus: "idle",
+      address: `G${"C".repeat(55)}`,
+      network: "TESTNET",
     } as ReturnType<typeof useWallet>);
   });
 
@@ -76,19 +78,7 @@ describe("CreateVault Flow - Integration Tests", () => {
       fireEvent.click(screen.getByRole("button", { name: /confirm vault/i }));
 
       // Assert handler was invoked once with correct data
-      expect(consoleDebug).toHaveBeenCalledWith("CreateVault confirm", {
-        amount: validAmount,
-        deadline: futureDeadline,
-        successAddress: validSuccessAddress,
-        failureAddress: validFailureAddress,
-        evidenceUrl: undefined,
-        milestones: [
-          {
-            title: "Milestone 1",
-            criteria: "Default milestone criteria",
-          },
-        ],
-      });
+      expect(consoleDebug).toHaveBeenCalledWith("CreateVault confirm", { hasEvidence: false });
       expect(consoleDebug).toHaveBeenCalledTimes(1);
     });
 
@@ -339,22 +329,11 @@ describe("CreateVault Flow - Integration Tests", () => {
 
       // Re-submit
       fireEvent.click(screen.getByRole("button", { name: /create vault/i }));
+      expect(screen.getByText(newAmount)).toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: /confirm vault/i }));
 
-      // Verify confirm was called with new amount
-      expect(consoleDebug).toHaveBeenCalledWith("CreateVault confirm", {
-        amount: newAmount,
-        deadline: futureDeadline,
-        successAddress: validSuccessAddress,
-        failureAddress: validFailureAddress,
-        evidenceUrl: undefined,
-        milestones: [
-          {
-            title: "Milestone 1",
-            criteria: "Default milestone criteria",
-          },
-        ],
-      });
+      // Confirmation records no form details in diagnostics.
+      expect(consoleDebug).toHaveBeenCalledWith("CreateVault confirm", { hasEvidence: false });
     });
 
     it("preserves state across multiple back-to-edit cycles", () => {
@@ -537,7 +516,7 @@ describe("CreateVault Flow - Integration Tests", () => {
       expect(consoleDebug).not.toHaveBeenCalled();
     });
 
-    it("passes correct payload to confirm handler", () => {
+    it("does not log form contents on confirmation", () => {
       const consoleDebug = vi
         .spyOn(console, "debug")
         .mockImplementation(() => undefined);
@@ -551,19 +530,7 @@ describe("CreateVault Flow - Integration Tests", () => {
       fireEvent.click(screen.getByRole("button", { name: /create vault/i }));
       fireEvent.click(screen.getByRole("button", { name: /confirm vault/i }));
 
-      expect(consoleDebug).toHaveBeenCalledWith("CreateVault confirm", {
-        amount: "500.1234567",
-        deadline: futureDeadline,
-        successAddress: validSuccessAddress,
-        failureAddress: validFailureAddress,
-        evidenceUrl: undefined,
-        milestones: [
-          {
-            title: "Milestone 1",
-            criteria: "Default milestone criteria",
-          },
-        ],
-      });
+      expect(consoleDebug).toHaveBeenCalledWith("CreateVault confirm", { hasEvidence: false });
     });
   });
 
