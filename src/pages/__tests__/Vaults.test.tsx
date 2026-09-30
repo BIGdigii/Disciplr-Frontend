@@ -6,7 +6,7 @@ import Vaults, { VaultsInner } from "../../pages/Vaults";
 import type { Vault } from "../../types/vault";
 
 // Helper to mock fetch function
-const mockSuccess = <T,>(data: T) => vi.fn().mockResolvedValue(data);
+const mockSuccess = <T, |>(data: T) => vi.fn().mockResolvedValue(data);
 const mockFailure = (message = "Network error") =>
   vi.fn().mockRejectedValue(new Error(message));
 
@@ -103,8 +103,8 @@ describe("Vaults page states", () => {
         currency: "USDC",
         status: "active" as const,
         deadline: "2025-01-01T00:00:00Z",
-        successAddress: "GSUCC3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK",
-        failureAddress: "GFAIL3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK",
+        successAddress: "GSUCC3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQKK",
+        failureAddress: "GFAIL3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQKK",
         milestones: [{ title: "Milestone A", criteria: "Criteria A" }],
         createdAt: "2024-01-01T00:00:00Z",
         creatorAddress: "GCREA3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK",
@@ -135,7 +135,7 @@ describe("Vaults page states", () => {
       sourceVaultId: "1",
       sourceVaultName: "Test Vault",
       amount: "1000",
-      successAddress: "GSUCC3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK",
+      successAddress: "GSUCC3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQKK",
       failureAddress: "GFAIL3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK",
       milestones: [{ title: "Milestone A", criteria: "Criteria A" }],
     });
@@ -400,95 +400,85 @@ describe("Vaults filter and sort", () => {
     {
       id: "3",
       name: "Gamma Project",
-      amount: 800,
+      amount: 250,
       currency: "USDC",
-      status: "active",
-      deadline: "2025-09-01T00:00:00Z",
+      status: "failed",
+      deadline: "2025-01-01T00:00:00Z",
       milestones: [],
     },
   ];
 
-  const renderWithRouter = (ui: React.ReactElement) =>
-    render(<MemoryRouter>{ui}</MemoryRouter>);
-
-  beforeEach(() => {
-    localStorageMock.clear();
-  });
-
-  test("renders the filter bar with status select and search input", async () => {
-    renderWithRouter(<VaultsInner fetchVaults={mockSuccess(vaults)} />);
-    await waitFor(() => screen.getByText("Alpha Project"));
-    expect(screen.getByRole("combobox", { name: /status/i })).toBeInTheDocument();
-    expect(screen.getByRole("searchbox", { name: /search/i })).toBeInTheDocument();
-  });
-
-  test("renders the sort controls", async () => {
-    renderWithRouter(<VaultsInner fetchVaults={mockSuccess(vaults)} />);
-    await waitFor(() => screen.getByText("Alpha Project"));
-    expect(screen.getByRole("combobox", { name: /sort vaults by/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /sort/i })).toBeInTheDocument();
-  });
-
   test("filters vaults by status", async () => {
-    renderWithRouter(<VaultsInner fetchVaults={mockSuccess(vaults)} />);
+    render(<Vaults fetchVaults={mockSuccess(vaults)} />);
     await waitFor(() => screen.getByText("Alpha Project"));
 
     await userEvent.selectOptions(
-      screen.getByRole("combobox", { name: /status/i }),
-      "completed",
+      screen.getByLabelText(/Filter by status/i),
+      "active",
     );
 
-    await waitFor(() => {
-      expect(screen.queryByText("Alpha Project")).not.toBeInTheDocument();
-      expect(screen.queryByText("Gamma Project")).not.toBeInTheDocument();
-      expect(screen.getByText("Beta Project")).toBeInTheDocument();
-    });
+    expect(screen.getByText("Alpha Project")).toBeInTheDocument();
+    expect(screen.queryByText("Beta Project")).not.toBeInTheDocument();
+    expect(screen.queryByText("Gamma Project")).not.toBeInTheDocument();
   });
 
   test("filters vaults by search query", async () => {
-    renderWithRouter(<VaultsInner fetchVaults={mockSuccess(vaults)} />);
+    render(<Vaults fetchVaults={mockSuccess(vaults)} />);
     await waitFor(() => screen.getByText("Alpha Project"));
 
     await userEvent.type(
-      screen.getByRole("searchbox", { name: /search/i }),
-      "Alpha",
+      screen.getByLabelText(/Search vaults/i),
+      "beta",
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("Alpha Project")).toBeInTheDocument();
-      expect(screen.queryByText("Beta Project")).not.toBeInTheDocument();
-      expect(screen.queryByText("Gamma Project")).not.toBeInTheDocument();
-    });
+    expect(screen.getByText("Beta Project")).toBeInTheDocument();
+    expect(screen.queryByText("Alpha Project")).not.toBeInTheDocument();
   });
 
-  test("sort vaults toggle changes direction", async () => {
-    renderWithRouter(<VaultsInner fetchVaults={mockSuccess(vaults)} />);
+  test("sorts vaults by amount ascending", async () => {
+    render(<Vaults fetchVaults={mockSuccess(vaults)} />);
     await waitFor(() => screen.getByText("Alpha Project"));
 
-    const sortButton = screen.getByRole("button", { name: /sort/i });
-    expect(sortButton).toHaveTextContent(/Asc/i);
+    await userEvent.selectOptions(screen.getByLabelText(/Sort by/i), "amount");
+    await userEvent.selectOptions(
+      screen.getByLabelText(/Sort direction/i),
+      "asc",
+    );
 
-    await userEvent.click(sortButton);
-    expect(sortButton).toHaveTextContent(/Desc/i);
+    const names = screen
+      .getAllByTextContentMatching(/Project/)
+      .map((el) => el.textContent);
+    expect(names).toEqual(["Gamma Project", "Alpha Project", "Beta Project"]);
   });
 
-  test("combined filter: status + search narrows results", async () => {
-    renderWithRouter(<VaultsInner fetchVaults={mockSuccess(vaults)} />);
+  test("sorts vaults by deadline descending", async () => {
+    render(<Vaults fetchVaults={mockSuccess(vaults)} />);
     await waitFor(() => screen.getByText("Alpha Project"));
 
     await userEvent.selectOptions(
-      screen.getByRole("combobox", { name: /status/i }),
-      "active",
+      screen.getByLabelText(/Sort by/i),
+      "deadline",
     );
-    await userEvent.type(
-      screen.getByRole("searchbox", { name: /search/i }),
-      "Gamma",
+    await userEvent.selectOptions(
+      screen.getByLabelText(/Sort direction/i),
+      "desc",
     );
 
-    await waitFor(() => {
-      expect(screen.queryByText("Alpha Project")).not.toBeInTheDocument();
-      expect(screen.queryByText("Beta Project")).not.toBeInTheDocument();
-      expect(screen.getByText("Gamma Project")).toBeInTheDocument();
-    });
+    const names = screen
+      .getAllByTextContentMatching(/Project/)
+      .map((el) => el.textContent);
+    expect(names).toEqual(["Alpha Project", "Beta Project", "Gamma Project"]);
+  });
+
+  test("shows no-match state when filters exclude all vaults", async () => {
+    render(<Vaults fetchVaults={mockSuccess(vaults)} />);
+    await waitFor(() => screen.getByText("Alpha Project"));
+
+    await userEvent.type(
+      screen.getByLabelText(/Search vaults/i),
+      "nonexistent",
+    );
+
+    expect(screen.getByText(/No vaults match your filters./i)).toBeInTheDocument();
   });
 });
