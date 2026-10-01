@@ -48,9 +48,13 @@ export const Text = React.forwardRef<HTMLElement, TextProps>(
     const typographyClass = getTypographyClass(effectiveRole)
 
     // Determine target element with fallback to 'span' for invalid/falsy `as`
-    const Component = (asProp && typeof asProp === 'string' && asProp.trim().length > 0)
-      ? asProp.trim()
-      : (asProp && typeof asProp !== 'string')
+    // Strings must be a plain tag name (e.g. rejects "<script>"); non-strings must
+    // be a component type (function / forwardRef / memo object). Anything else,
+    // including empty or falsy values, renders a span.
+    const trimmedAs = typeof asProp === 'string' ? asProp.trim() : ''
+    const Component = typeof asProp === 'string'
+      ? (/^[a-zA-Z0-9-]+$/.test(trimmedAs) ? trimmedAs : 'span')
+      : (asProp && (typeof asProp === 'function' || typeof asProp === 'object'))
         ? asProp
         : 'span'
 
