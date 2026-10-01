@@ -77,6 +77,11 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
     const disconnectInFlightRef = useRef(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLElement | null>(null);
+    const mountedRef = useRef(true);
+    // Latest address, so a clipboard write that resolves after an account
+    // switch cannot flag the new address as copied.
+    const addressRef = useRef(address);
+    addressRef.current = address;
 
     // Capture the element that opened the menu once and restore focus to it
     // only on unmount. Deliberately separate from the keydown effect so a
@@ -117,6 +122,27 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
         [],
     );
 
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+            if (copyResetTimerRef.current !== null) {
+                clearTimeout(copyResetTimerRef.current);
+                copyResetTimerRef.current = null;
+            }
+        };
+    }, []);
+
+    // Reset the "copied" indicator whenever the address or network changes so
+    // stale success state cannot be attributed to a different account/network.
+    useEffect(() => {
+        setCopyState('idle');
+        if (copyResetTimerRef.current !== null) {
+            clearTimeout(copyResetTimerRef.current);
+            copyResetTimerRef.current = null;
+        }
+    }, [address, network]);
+
     if (!address) return null;
 
     const copyAddress = async () => {
@@ -134,7 +160,9 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
         }
 
         try {
-            await navigator.clipboard.writeText(address);
+            const copiedAddress = address;
+            await navigator.clipboard.writeText(copiedAddress);
+            if (!mountedRef.current || addressRef.current !== copiedAddress) return;
             setCopyState('copied');
             copyResetTimerRef.current = setTimeout(() => {
                 copyResetTimerRef.current = null;
@@ -147,7 +175,13 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
     };
 
     const openExplorer = () => {
-        const url = getExplorerAccountUrl(address, network);
+        let url: string | null | undefined;
+        try {
+            url = getExplorerAccountUrl(address, network);
+        } catch (err) {
+            logger.error('Failed to build explorer URL', err);
+            url = null;
+        }
         if (!url) {
             // The address failed validation upstream; never open an empty URL.
             logger.error('Explorer link blocked: wallet address is not a valid Stellar address');
@@ -235,7 +269,7 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
                 <div className="wallet-dropdown-header">
                     <div className="wallet-dropdown-address-container">
                         <span className="wallet-dropdown-address">{truncateMiddle(address, 6, 4)}</span>
-                        <button className="wallet-copy-btn" onClick={copyAddress} title="Copy Address" role="menuitem">
+                        <button className="wallet-copy-btn" onClick={copyAddress} title="Copy Address" role="menuitem" aria-label={copyState === 'copied' ? 'Address copied' : 'Copy address'}>
                             {copyState === 'copied' ? <Check size={14} color="var(--success)" /> : <Copy size={14} />}
                         </button>
                     </div>
