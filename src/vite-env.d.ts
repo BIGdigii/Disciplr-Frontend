@@ -2,7 +2,6 @@
 
 // --------------------------------------------------------------------------
 // Environment contract for the Vanity app.
-p
 // This module is a compile-time boundary. The invariants below
 // are enforced by the runtime guard in `src/env.ts` (see `assertEnv`).
 // The declarations here must stay in sync with that guard.

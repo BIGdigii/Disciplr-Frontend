@@ -67,7 +67,7 @@ describe("Vaults page states", () => {
     expect(skeletons.length).toBeGreaterThanOrEqual(3);
     // Wait for loading to finish (no data)
     await waitFor(() =>
-      expect(screen.queryByTestId("skeleton")).not.toBeInDocument(),
+      expect(screen.queryByTestId("skeleton")).not.toBeInTheDocument(),
     );
   });
 

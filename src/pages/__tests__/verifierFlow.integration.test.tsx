@@ -86,8 +86,8 @@ describe('Verifier Flow Integration Tests', () => {
       );
 
       // Verify initial state: 2 pending tasks
-      expect(screen.getByText('Q3 Development Fund')).toBeInDocument();
-      expect(screen.getByText('Community Grant #42')).toBeInDocument();
+      expect(screen.getByText('Q3 Development Fund')).toBeInTheDocument();
+      expect(screen.getByText('Community Grant #42')).toBeInTheDocument();
 
       // Click Review on the Q3 Development Fund task (v-101)
       clickReviewFor('Q3 Development Fund');
@@ -224,7 +224,7 @@ describe('Verifier Flow Integration Tests', () => {
 
       // Should navigate back to queue
       await waitFor(() => {
-        expect(screen.getByText('Pending Validations')).toBeInDocument();
+        expect(screen.getByText('Pending Validations')).toBeInTheDocument();
       });
 
       // Navigate to history
@@ -240,7 +240,7 @@ describe('Verifier Flow Integration Tests', () => {
 
       // Verify status is rejected (scoped to this row - "Rejected" also
       // appears in the outcome filter dropdown elsewhere on the page)
-      expect(within(historyRow).getByText('Rejected')).toBeInDocument();
+      expect(within(historyRow).getByText('Rejected')).toBeInTheDocument();
 
       // Verify rejection notes are present
       expect(screen.getByText(/Deployment URL not accessible./)).toBeInTheDocument();
@@ -296,7 +296,7 @@ describe('Verifier Flow Integration Tests', () => {
       fireEvent.click(reviewButtons[0]);
 
       await waitFor(() => {
-        expect(screen.getByText('Review Milestone')).toBeInDocument();
+        expect(screen.getByText('Review Milestone')).toBeInTheDocument();
       });
 
       // Approve button should be disabled (criteria not checked)

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitvit";
+import { describe, it, expect } from "vitest";
 import { getNotifications, vaults } from "./example";
 import { NOTIFICATION_TYPE_MAP } from "../notificationType";
 
