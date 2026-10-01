@@ -6,140 +6,139 @@ import path from "path";
 /**
  * Vite configuration for the application.
  *
- * Invariants enforced by this module:
- *  1. The `@/` import alias always resolves to `<root>/src`, even when the
- *     config is loaded from a different working directory.
- *  2. Vendor chunks are deterministic and mutually exclusive; a module is
- *     assigned to at most one manual chunk, so Rollup never emits duplicate
- *     code across chunks or fails with "cannot assign module to multiple
- *     chunks".
- *  3. The dev server port and API proxy target are validated before use, so
- *     invalid or missing environment values fail fast with actionable
- *     messages instead of silently producing a misconfigured server.
- *  4. Environment values are normalized once at config-load time, so retries
- *     or repeated loads of this module yield identical results.
- *
- * This file is executed by Vite in Node, so it must not rely on browser
- * globals. Failures are reported via Error messages that never echo secret
- * values.
+ * Invariants enforced here:
+ * 1. Environment variables are loaded deterministically and validated before the
+ *    build/dev server starts. Invalid or partial env configuration fails fast
+ *    with a non-sensitive, actionable error instead of silently producing a
+ *    broken bundle.
+ * 2. The `A@H alias resolves to `<root>/src` using an absolute path so that
+ *    resolution is stable regardless of the current working directory.
+ * 3. Vendor chunks are assigned deterministically and exhaustively: every
+ *    matched module maps on a single chunk, and unmatched modules return
+ *    `undefined` so Rollup keeps its default grouping behavior.
+ * 4. The dev server proxy target is derived from a validated env variable
+ *    with a safe localhost default, so misconfiguration is detected before
+ *    the server binds.
  */
 
-const DEFAULT_PORT = 5173;
-const DEFAULT_PROXY_TARGET = "http://localhost:3000";
+const ROOT_DIR = __dirname;
+const SRC_DIR = path.resolve(ROOT_DIR, "./src");
 
-/**
- * Parse a port number from an environment variable.
- *
- * Boundary behavior:
- *  - undefined/empty -> fallback to default
- *  - non-numeric     -> throw with the variable name (no value echoed)
- *  - out of range    -> throw with the variable name
- *  - valid          -> return the integer
- */
-function parsePort(raw: string | undefined, varName: string): number {
-  if (raw === undefined || raw.trim() === "") {
-    return DEFAULT_PORT;
+const VENDOR_CHUNK_MATCHERS: ReadonlyArray<{ pattern: RegExp; chunk: string }> = [
+  { pattern: /[\\/]node_modules[\\/]recharts[\\/]/, chunk: "vendor-recharts" },
+  { pattern: /[\\/]node_modules[\\/]jspdf[\\/]/, chunk: "vendor-jspdf" },
+  { pattern: /[\\/]node_modules[\\/]framer-motion[\\/]/, chunk: "vendor-framer-motion" },
+];
+
+const DEFAULT_DEV_PORT = 5173;
+const DEFAULT_API_TARGET = "http://localhost:3000";
+
+class ConfigError extends Error {
+  constructor(message: string) {
+    super(`[vite.config] ${message}`);
+    this.name = "ConfigError";
   }
-  const trimmed = raw.trim();
-  if (!/^\d+$/.test(trimmed)) {
-    throw new Error(
-      `Invalid ${varName}: expected an integer port, set ${varName} to a number between 1 and 65535.`,
-    );
-  }
-  const port = Number(trimmed);
-  if (!withinRange(port, 1, 65535)) {
-    throw new Error(
-      `Invalid ${varName}: expected a port between 1 and 65535, received a value out of range.`,
-    );
-  }
-  return port;
 }
 
 /**
- * Validate a proxy target URL.
- *
- * Accepts any absolute http/https URL. Rejects blank values, non-URLs,
- * and non-http(s) schemes. Error messages do not echo the raw value to
- * avoid leaking credentials embedded in a URL.
+ * Parse an integer env variable with bounds. Returns the default when the
+ * variable is absent or empty. Throws on non-numeric, non-integer, or
+ * out-of-range values so misconfiguration fails fast and deterministically.
  */
-function parseProxyTarget(raw: string | undefined, varName: string): string {
+function parseIntEnv(
+raw: string | undefined,
+name: string,
+defaultValue: number,
+min: number,
+max: number,
+): number {
   if (raw === undefined || raw.trim() === "") {
-    return DEFAULT_PROXY_TARGET;
+    return defaultValue;
+  }
+  const trimmed = raw.trim();
+  if (!/^[0-9]+$/.test(trimmed)) {
+    throw new ConfigError(`${name} must be a non-negative integer, got ${JSON.stringify(raw)}`);
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new ConfigError(`${name} must be a safe integer, got ${JSON.stringify(raw)}`);
+  }
+  if (parsed < min || parsed > max) {
+    throw new ConfigError(`${name} must be between ${min} and ${max}, got ${parsed}`);
+  }
+  return parsed;
+}
+
+/**
+ * Validate a proxy target URL. Only absolute http/https URLs are allowed.
+ * This prevents accidentally forwarding traffic to a non-HTTP scheme or
+ * a relative path that would be interpreted relative to the dev server.
+ */
+function validateProxyTarget(raw: string | undefined, name: string): string {
+  if (raw === undefined || raw.trim() === "") {
+    return DEFAULT_API_TARGET;
   }
   const trimmed = raw.trim();
   let parsed: URL;
   try {
     parsed = new URL(trimmed);
   } catch {
-    throw new Error(
-      `Invalid ${varName}: expected an absolute http(s) URL. Value was not echoed for security.`,
-    );
+    throw new ConfigError(`${name} must be a valid absolute URL, got ${JSON.stringify(raw)}`);
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(
-      `Invalid ${varName}: expected an http or https URL. Value was not echoed for security.`,
-    );
+    throw new ConfigError(`${name} must use http or https, got ${parsed.protocol}`);
   }
   if (!parsed.hostname) {
-    throw new Error(
-      `Invalid ${varName}: expected a URL with a hostname. Value was not echoed for security.`,
-    );
+    throw new ConfigError(`${name} must include a hostname, got ${JSON.stringify(raw)}`);
   }
   return trimmed;
 }
 
-function withinRange(value: number, min: number, max: number): boolean {
-  return Number.isInteger(value) && value >= min && value <= max;
-}
-
 /**
- * Map of vendor matchers to chunk names. Order is irrelevant because
- * matching is exclusive: the first match wins and the function returns
- * immediately. This guarantees a given module is never assigned to two
- * chunks.
+ * Resolve a vendor chunk name for a given module id. Returns `undefined`
+ * when no matcher applies, preserving Rollup's default chunking.
  */
-const VENDOR_CHUNKS: ReadonlyArray<{ test: (id: string) => boolean; name: string }> = [
-  { test: (id) => id.includes("recharts"), name: "vendor-recharts" },
-  { test: (id) => id.includes("jspdf"), name: "vendor-jspdf" },
-  { test: (id) => id.includes("framer-motion"), name: "vendor-framer-motion" },
-];
-
-export function manualChunkFor(id: string): string | undefined {
-  if (typeof id !== "string" || id === "") {
+function resolveVendorChunk(id: string): string | undefined {
+  if (typeof id !== "string" || id.length === 0) {
     return undefined;
   }
-  for (const entry of VENDOR_CHUNKS) {
-    if (entry.test(id)) {
-      return entry.name;
+  const normalized = id.replace(/\\\\/g, "/");
+  for (const { pattern, chunk } of VENDOR_CHUNK_MATCHERS) {
+    if (pattern.test(normalized)) {
+      return chunk;
     }
   }
   return undefined;
 }
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode);
-  const port = parsePort(env.VITE_DEV_PORT, "VITE_DEV_PORT");
-  const proxyTarget = parseProxyTarget(
-    env.VITE_API_PROXY_TARGET,
-    "VITE_API_PROXY_TARGET",
-  );
+  // Load .env files deterministically for the active mode. `loadEnv` only
+  // returns variables that are explicitly prefixed with `VITE_` or are otherwise
+  // exposed by Vite, so sensitive server-side variables are not leaked into
+  // the client bundle.
+  const env = loadEnv(mode, ROOT_DIR);
+
+  const devPort = parseIntEnv(env.VITE_DEV_PORT, "VITE_DEV_PORT", DEFAULT_DEV_PORT, 1, 65535);
+  const apiTarget = validateProxyTarget(env.VITE_API_TARGET, "VITE_API_TARGET");
 
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
-      alias: { "@": path.resolve(__dirname, "./src") },
+      alias: { "@": SRC_DIR },
     },
     build: {
       rollupOptions: {
         output: {
-          manualChunks: manualChunkFor,
+          manualChunks(id) {
+            return resolveVendorChunk(id);
+          },
         },
       },
     },
     server: {
-      port,
+      port: devPort,
       proxy: {
-        "/api": { target: proxyTarget, changeOrigin: true },
+        "/api": { target: apiTarget, changeOrigin: true },
       },
     },
   };

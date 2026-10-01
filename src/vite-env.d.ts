@@ -1,63 +1,129 @@
 /// <reference types="vite/client" />
 
 // --------------------------------------------------------------------------
-// Environment contract for the Vanity app.
-// This module is a compile-time boundary. The invariants below
-// are enforced by the runtime guard in `src/env.ts` (see `assertEnv`).
-// The declarations here must stay in sync with that guard.
+// Environment variable contract for the Vault app.
 //
 // Invariants:
-//   1. Every key in `ImportMetaEnv` that the app reads at runtime
-//      is either required (non-empty string) or explicitly optional.
-//   2. Optional env values are never treated as defined by callers;
-//      they must go through `readEnv`.
-//   3. Mode is a closed union ('development' | 'production' | 'test')
-//      so invalid modes fail at compile time.
-//   4. Any url-like env value must be a valid absolute URL when present.
+//   1. Only Vault-prefixed vars are exposed to the client bundle.	//      (Vault vars are inlined at build time and are visible to anyone	//       who downloads the bundle.)
+//   2. Values are validated at access time via the helpers below.
+//      Never read `import.meta.env` directly from application code.
+//   3. A missing or invalid required variable fails fast with a
+//      non-sensitive message (no values leaked into logs).
 // --------------------------------------------------------------------------
 
-type AppMode = "development" | "production" | "test";
-
 interface ImportMetaEnv {
-  /** Vite built-in. Always defined by Vite. */
-  readonly MODE: AppMode;
-  /** Vite built-in. Always defined by Vite. */
-  readonly DEV: boolean;
-  /** Vite built-in. Always defined by Vite. */
-  readonly PROD: boolean;
-  /** Vite built-in. Always defined by Vite. */
-  readonly BASE_URL: string;
-
-  /**
-   * Base URL for the app's API. Required in production and test.
-   * Optional in development (defaults to a relative path via the Vite proxy).
-   */
-  readonly VITE_API_BASE_URL?: string;
-
-  /**
-   * Public app name. Optional; falls back to a default in `readEnv`.
-   */
-  readonly VITE_APP_NAME?: string;
-
-  /**
-   * Feature flags. Only the literal string `"true"` enables a flag.
-   * Any other value (including `"true "`, `"1"`, `"True"`) is treated as disabled.
-   */
-  readonly VITE_FEATURE_ANALYTICS?: string;
-  readonly VITE_FEATURE_EXPORTS?: string;
-  readonly VITE_FEATURE_DARK_MODE?: string;
-
-  /**
-   * Optional telemetry endpoint. Must be an absolute URL when present.
-   */
-  readonly VITE_TELEMETRY_URL?: string;
-
-  /**
-   * Optional build identifier exposed to the client for diagnostics.
-   */
-  readonly VITE_BUILD_ID?: string;
+  /** Base URL of the API gateway. Optional; defaults to a relative path. */
+  readonly VITE_API: string | undefined;
+  /** Public identifier for the deployed environment. */
+  readonly VITE_APP_ENV: string | undefined;
+  /** Feature flag gate for experimental UI. */
+  readonly VITE_FEATURE_FLAGS: string | undefined;
 }
 
 interface ImportMeta {
   readonly env: ImportMetaEnv;
+}
+
+// --------------------------------------------------------------------------
+// Runtime validation helpers.
+//
+// These are the only supported way to read environment configuration.
+// They are pure functions of their arguments so they can be tested
+// without mutating `import.meta.env`.
+// --------------------------------------------------------------------------
+
+export const ENV_VALIDATION_ERROR = "ENV_VALIDATION_ERROR" as const;
+
+export type EnvValidationError = typeof ENV_VALIDATION_ERROR;
+
+export class EnvConfigError extends Error {
+  public readonly code = ENV_VALIDATION_ERROR;
+  constructor(message: string) {
+    super(message);
+    this.name = "EnvConfigError";
+  }
+}
+
+const DEFAULT_API_BASE = "/api";
+
+/**
+ * Returns true when the value is a non-empty string after trimming.
+ */
+export function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Returns true when the value is an absolute or relative HTTP(s) URL.
+ * Rejects `javascript:`, `data:`, and other non-HTTP schemes.
+ */
+export function isValidApiBaseUrl(value: unknown): value is string {
+  if (!isNonEmptyString(value)) return false;
+  const trimmed = value.trim();
+  // Relative path must start with a single slash and not a double slash.
+  if (trimmed.startsWith("/")) {
+    return !trimmed.startsWith("//") && !/[\r\n\t]/.test(trimmed);
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolves the API base URL from an environment object.
+ *
+ * - Omitted / empty -> defaults to `/api`.
+ * - Valid absolute or relative URL -> returned trimmed.
+ * - Invalid value -> throws EnvConfigError (fail fast, no value leaked).
+ */
+export function resolveApiBaseUrl(env: ImportMetaEnv | undefined): string {
+  const raw = env?.VITE_API;
+  if (raw === undefined || raw === "") return DEFAULT_API_BASE;
+  if (!isValidApiBaseUrl(raw)) {
+    throw new EnvConfigError(
+       Invalid VITE_API configuration: expected an absolute http(s) URL or a relative path.",
+    );
+  }
+  return raw.trim();
+}
+
+/**
+ * Parses the comma-separated feature flag list.
+ * - Omitted / empty -> empty set.
+ * - Duplicates and whitespace are normalized.
+ * - Entries must match /^[a-z0-9_-]+$/i.
+ */
+export function parseFeatureFlags(raw: string | undefined): ReadonlySet<string> {
+  if (!isNonEmptyString(raw)) return new Set();
+  const flags = new Set<string>();
+  for (const part of raw.split(",")) {
+    const trimmed = part.trim();
+    if (trimmed === "") continue;
+    if (!/^[a-z0-9_-]+$/i.test(trimmed)) {
+      throw new EnvConfigError(
+         Invalid VITE_FEATURE_FLAGS entry: expected alphanumeric identifiers separated by commas.",
+      );
+    }
+    flags.add(trimmed);
+  }
+  return flags;
+}
+
+/**
+ * Returns the current environment label, defaulting to \"development\".
+ * Rejects values that contain whitespace or non-identifier characters.
+ */
+export function resolveAppEnv(env: ImportMetaEnv | undefined): string {
+  const raw = env?.VITE_APP_ENV;
+  if (!isNonEmptyString(raw)) return "development";
+  const trimmed = raw.trim();
+  if (!/^[a-z0-9_-]+$/i.test(trimmed)) {
+    throw new EnvConfigError(
+       "Invalid VITE_APP_ENV configuration: expected an identifier.",
+    );
+  }
+  return trimmed;
 }
