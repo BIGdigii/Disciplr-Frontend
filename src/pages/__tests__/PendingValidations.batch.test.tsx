@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import PendingValidations from '../PendingValidations';

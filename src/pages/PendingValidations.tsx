@@ -118,7 +118,7 @@ export default function PendingValidations() {
       }
       setSelectedIds([]);
       setModalOpen(false);
-    } catch (err) {
+    } catch {
       setActionError(
         decision === 'approve'
           ? 'Failed to approve selected validations. Please retry.'
