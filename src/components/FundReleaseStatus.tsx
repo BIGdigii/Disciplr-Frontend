@@ -5,7 +5,7 @@ import { Text } from './Text';
 import { SafeLink } from './SafeLink';
 import { EmptyState } from './EmptyState';
 import { getExplorerTxUrl } from '../utils/explorer';
-import { truncateMiddle } from '../utils/truncate';
+import { truncateMiddle as truncateMiddleCanonical } from '../utils/truncate';
 import {
   isPlausibleStellarAddress,
   isValidCurrency,
@@ -45,6 +45,18 @@ export const MAX_AMOUNT = 1_000_000_000_000; // 1e12
 export const MAX_CURRENCY_LENGTH = 16;
 export const MAX_ADDRESS_LENGTH = 128;
 export const MAX_HASH_LENGTH = 128;
+
+/**
+ * Display wrapper around the canonical `truncateMiddle` (utils/truncate) that
+ * keeps this component's public contract: missing or non-string values render
+ * as 'Unavailable' instead of an empty string.
+ */
+export function truncateMiddle(value: string, prefixLength = 6, suffixLength = 4): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    return 'Unavailable';
+  }
+  return truncateMiddleCanonical(value, prefixLength, suffixLength);
+}
 
 function networkLabel(network: WalletNetwork | null | undefined): string {
   return network === 'PUBLIC' ? 'mainnet' : 'testnet';
