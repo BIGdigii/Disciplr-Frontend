@@ -1,3 +1,4 @@
+import * as DesignSystem from '../index';
 import {
   generateCssVariables,
   generateCssVariablesString,
@@ -21,6 +22,48 @@ jest.mock('../utils/logger', () => ({
     error: jest.fn(),
   },
 }));
+
+describe('Design System Index', () => {
+  it('should export all expected modules without missing dependencies', () => {
+    // Assert that the module itself loaded
+    expect(DesignSystem).toBeDefined();
+
+    // Test that the public entry point exports its supported runtime API
+    expect(typeof DesignSystem.generateCssVariables).toBe('function');
+    expect(typeof DesignSystem.loadTokens).toBe('function');
+    expect(typeof DesignSystem.isValidColorString).toBe('function');
+    expect(Object.keys(DesignSystem).length).toBeGreaterThan(0);
+  });
+
+  describe('Failure paths and boundaries', () => {
+    it('should safely allow multiple concurrent imports (duplicate loading)', async () => {
+      const imports = await Promise.all([
+        import('../index'),
+        import('../index'),
+        import('../index'),
+      ]);
+
+      const [moduleA, moduleB, moduleC] = imports;
+
+      expect(moduleA).toBe(moduleB);
+      expect(moduleB).toBe(moduleC);
+      expect(typeof moduleA.loadTokens).toBe('function');
+      expect(typeof moduleA.logger).toBe('object');
+    });
+
+    it('should handle undefined or invalid property access boundaries securely', () => {
+      // @ts-expect-error - deliberate invalid access for boundary testing
+      const invalidAccess = DesignSystem['nonExistentProperty'];
+      expect(invalidAccess).toBeUndefined();
+    });
+
+    it('should maintain deterministic behavior for exports', () => {
+      const logger1 = DesignSystem.logger;
+      const logger2 = DesignSystem.logger;
+      expect(logger1).toBe(logger2);
+    });
+  });
+});
 
 describe('design-system public entry point', () => {
   it('re-exports the supported runtime API', () => {
