@@ -78,6 +78,10 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
     const dropdownRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLElement | null>(null);
     const mountedRef = useRef(true);
+    // Latest address, so a clipboard write that resolves after an account
+    // switch cannot flag the new address as copied.
+    const addressRef = useRef(address);
+    addressRef.current = address;
 
     // Capture the element that opened the menu once and restore focus to it
     // only on unmount. Deliberately separate from the keydown effect so a
@@ -156,8 +160,9 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
         }
 
         try {
-            await navigator.clipboard.writeText(address);
-            if (!mountedRef.current) return;
+            const copiedAddress = address;
+            await navigator.clipboard.writeText(copiedAddress);
+            if (!mountedRef.current || addressRef.current !== copiedAddress) return;
             setCopyState('copied');
             copyResetTimerRef.current = setTimeout(() => {
                 copyResetTimerRef.current = null;

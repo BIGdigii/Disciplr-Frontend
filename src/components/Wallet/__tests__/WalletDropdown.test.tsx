@@ -10,7 +10,7 @@ const walletState = vi.hoisted(() => ({
     disconnect: vi.fn(),
 }));
 
-vi.mock('@context/WalletContext', () => ({
+vi.mock('@/context/WalletContext', () => ({
     useWallet: () => walletState,
 }));
 
@@ -62,16 +62,6 @@ function setClipboard(value: unknown) {
 
 function mockClipboard(writeText: ReturnType<typeof vi.fn>) {
     setClipboard({ writeText });
-}
-
-function resetWalletState() {
-    walletState.address = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW';
-    walletState.balance = '12.0000000';
-    walletState.balanceStatus = 'success';    
-    walletState.balanceError = null;
-    walletState.network = 'TESTNET';
-    walletState.disconnect.mockClear();
-    vi.useRealTimers();
 }
 
 describe('WalletDropdown balance states', () => {
@@ -238,7 +228,7 @@ describe('WalletDropdown clipboard copy', () => {
     });
 
     test('ignores a stale copy resolution after the address changes', async () => {
-        vi.useFakeTimes();
+        vi.useFakeTimers();
         let resolveFirst: () => void = () => undefined;
         const first = new Promise<void>((resolve) => {
             resolveFirst = resolve;
@@ -246,14 +236,14 @@ describe('WalletDropdown clipboard copy', () => {
         const writeText = vi.fn().mockImplementationOnce(() => first).mockResolvedValue(undefined);
         mockClipboard(writeText);
 
-        const { runbook } = renderDropdown();
+        const { rerender, onClose, onSwitch } = renderDropdown();
 
         act(() => {
             screen.getByTitle('Copy Address').click();
         });
 
         walletState.address = 'GXYZ77777777777777777777777777777777777777777777777777777777777777';
-        runbook.all();
+        rerender(<WalletDropdown onClose={onClose} onSwitch={onSwitch} />);
 
         await act(async () => {
             resolveFirst();
