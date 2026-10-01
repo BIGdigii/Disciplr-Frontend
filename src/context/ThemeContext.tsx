@@ -1,4 +1,4 @@
-import { createContext, useContext, effect, useMemo, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, useCallback, ReactNode } from 'react';
 
 // In-memory fallback when localStorage fails
 let memoryPreference: UserPreference | null = null;
@@ -41,7 +41,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const THEME_STORAGE_KEY = 'disciplr-theme';
 
-const NEUT_PREFERENCE: Record<UserPreference, UserPreference> = {
+const NEXT_PREFERENCE: Record<UserPreference, UserPreference> = {
   light: 'dark',
   dark: 'system',
   system: 'light',
@@ -108,11 +108,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [preference]);
 
   const toggleTheme = useCallback(() => {
-    setPreferenceState((prev) => NETT_PREFERENCE[prev]);
+    setPreferenceState((prev) => NEXT_PREFERENCE[prev]);
   }, []);
 
   // Validate input at the boundary: ignore invalid preferences rather than
-  // corrupting state or persisteng an unsafe value. This keeps the public
+  // corrupting state or persisting an unsafe value. This keeps the public
   // interface stable while enforcing the invariant that only light/dark/system
   // can ever reach state or storage.
   const setTheme = useCallback((newPreference: UserPreference) => {

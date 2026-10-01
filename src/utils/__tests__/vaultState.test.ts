@@ -552,11 +552,6 @@ describe("hostile input regression", () => {
       expect(() => lookupVaultSafe(store, key as never)).not.toThrow();
     }
   });
-});
-text = result.issues.join(" ");
-      expect(text).toMatch(/id|type|hash|timestamp|amount/);
-    }
-  });
 
   it("accepts every fixture vault so the app's own data is never mislabeled", () => {
     for (const vault of Object.values(MASTER_VAULTS)) {
