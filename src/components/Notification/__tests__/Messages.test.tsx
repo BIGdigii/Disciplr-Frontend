@@ -14,6 +14,7 @@ describe("Message Component", () => {
     read: false,
     isFullPage: false,
     setRead: vi.fn(),
+    onDismiss: vi.fn(),
   };
 
   it("renders message details correctly when unread and not full page", () => {
@@ -56,6 +57,22 @@ describe("Message Component", () => {
 
     // Assert "Delete" button is rendered when isFullPage is true
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+  });
+
+  it("clicking the Delete button calls onDismiss with the message id", () => {
+    const onDismissMock = vi.fn();
+    const props = {
+      ...defaultProps,
+      isFullPage: true,
+      onDismiss: onDismissMock,
+    };
+    render(<Message {...props} />);
+
+    const deleteButton = screen.getByRole("button", { name: "Delete" });
+    fireEvent.click(deleteButton);
+
+    expect(onDismissMock).toHaveBeenCalledTimes(1);
+    expect(onDismissMock).toHaveBeenCalledWith(props.id);
   });
 
   it("clicking the title opens the expanded view and calls setRead with the item's id", () => {

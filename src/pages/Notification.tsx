@@ -256,6 +256,7 @@ export default function Notification() {
                         read={items.isRead}
                         isFullPage={true}
                         setRead={setRead}
+                        onDismiss={handleDismiss}
                       />
                     </div>
                     <button

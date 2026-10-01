@@ -11,6 +11,7 @@ interface MessageProps {
   read: boolean;
   isFullPage: boolean;
   setRead: (id: string) => void;
+  onDismiss: (id: string) => void;
 }
 
 export default function Message({
@@ -22,6 +23,7 @@ export default function Message({
   read,
   isFullPage,
   setRead,
+  onDismiss,
 }: MessageProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { icon: Icon, color, label } = getNotificationTypeMapping(type);
@@ -65,7 +67,11 @@ export default function Message({
               </div>
 
               {isFullPage && (
-                <button className="bg-[#00c389] px-2 py-1 rounded-md">
+                <button
+                  type="button"
+                  onClick={() => onDismiss(id)}
+                  className="bg-[#00c389] px-2 py-1 rounded-md"
+                >
                   Delete
                 </button>
               )}
