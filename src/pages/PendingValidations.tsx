@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CountdownDeadline } from '../components/CountdownDeadline';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { Text } from '../components/Text';
 import { VerifierMetricsBar } from '../components/VerifierMetricsBar';
-import { computeVerifierMetrics } from '../utils/verifierMetrics';
+import { computeVerifierMetrics, CRITICAL_DAYS_THRESHOLD } from '../utils/verifierMetrics';
 import { useVerifierStore } from '../Zustand/Store';
 import { StatusChip } from '../components/StatusChip';
 import { filterPending } from '../utils/filterPending';
@@ -14,7 +14,10 @@ import { useCurrentTime } from '../hooks/useCurrentTime';
 
 export default function PendingValidations() {
   const navigate = useNavigate();
-  const { pendingValidations, validationHistory, batchApprove, batchReject } = useVerifierStore();
+  const pendingValidations = useVerifierStore((state) => state.pendingValidations);
+  const validationHistory = useVerifierStore((state) => state.validationHistory);
+  const batchApprove = useVerifierStore((state) => state.batchApprove);
+  const batchReject = useVerifierStore((state) => state.batchReject);
   const now = useCurrentTime();
 
   // Queue-at-a-glance metrics for the strip above the table.
@@ -34,6 +37,8 @@ export default function PendingValidations() {
   const [modalOpen, setModalOpen] = useState(false);
   const [pendingDecision, setPendingDecision] = useState<'approve' | 'reject'>('approve');
   const selectAllRef = useRef<HTMLInputElement>(null);
+  const inFlightRef = useRef(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Get unique milestones from all pending validations
   const availableMilestones = useMemo(() => {
@@ -77,11 +82,12 @@ export default function PendingValidations() {
     }
   }, [someSelected]);
 
-  const toggleOne = (id: string) => {
+  const toggleOne = useCallback((id: string) => {
+    if (typeof id !== 'string' || id.length === 0) return;
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
-  };
+  }, []);
 
   const toggleAll = () => {
     setSelectedIds(allSelected ? [] : allIds);
@@ -89,25 +95,49 @@ export default function PendingValidations() {
 
   const openBatch = (decision: 'approve' | 'reject') => {
     if (selectedIds.length === 0) return;
+    if (inFlightRef.current) return;
+    setActionError(null);
     setPendingDecision(decision);
     setModalOpen(true);
   };
 
   const handleConfirm = (decision: 'approve' | 'reject', notes: string) => {
-    if (decision === 'approve') {
-      batchApprove(selectedIds, notes);
-    } else {
-      batchReject(selectedIds, notes);
+    if (inFlightRef.current) return;
+    if (selectedIds.length === 0) {
+      setModalOpen(false);
+      return;
     }
-    setSelectedIds([]);
-    setModalOpen(false);
+    const ids = [...selectedIds];
+    inFlightRef.current = true;
+    setActionError(null);
+    try {
+      if (decision === 'approve') {
+        batchApprove(ids, notes);
+      } else {
+        batchReject(ids, notes);
+      }
+      setSelectedIds([]);
+      setModalOpen(false);
+    } catch {
+      setActionError(
+        decision === 'approve'
+          ? 'Failed to approve selected validations. Please retry.'
+          : 'Failed to reject selected validations. Please retry.',
+      );
+    } finally {
+      inFlightRef.current = false;
+    }
   };
 
   const hasSelection = selectedIds.length > 0;
   const sortLabel = sortDir === 'asc' ? 'Ascending' : 'Descending';
-  const headerSort = (key: PendingSortKey) => {
-    if (sortKey !== key) return 'none';
-    return sortDir === 'asc' ? 'ascending' : 'descending';
+  const handleHeaderSort = (key: PendingSortKey) => {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
   };
 
   return (
@@ -128,6 +158,13 @@ export default function PendingValidations() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={() => navigate('/verifier/history')}
+            className="self-start px-4 py-2 border rounded text-sm font-medium transition"
+            style={{ borderColor: 'var(--border)', color: 'var(--text)', background: 'var(--bg)' }}
+          >
+            View History
+          </button>
           <label className="flex flex-col gap-1 text-sm font-medium" style={{ color: 'var(--text)' }}>
             Sort by
             <select
@@ -146,7 +183,7 @@ export default function PendingValidations() {
             className="self-end px-4 py-2 border rounded text-sm font-medium transition"
             style={{ borderColor: 'var(--border)', color: 'var(--text)', background: 'var(--bg)' }}
           >
-            Sort direction: {sortDir === 'asc' ? 'Ascending' : 'Descending'}
+            Sort direction: {sortLabel}
           </button>
         </div>
       </header>
@@ -219,31 +256,28 @@ export default function PendingValidations() {
                     className="h-4 w-4 cursor-pointer accent-[var(--accent)]"
                   />
                 </th>
-                <th
-                  scope="col"
-                  className="p-4 font-medium text-sm"
-                  style={{ color: 'var(--muted)' }}
-                  aria-sort={sortKey === 'vaultName' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
-                >
-                  Vault & Milestone
-                </th>
+                <SortableHeader
+                  label="Vault & Milestone"
+                  fieldKey="vaultName"
+                  currentSortKey={sortKey}
+                  currentSortDir={sortDir}
+                  onSort={handleHeaderSort}
+                />
                 <th scope="col" className="p-4 font-medium text-sm" style={{ color: 'var(--muted)' }}>Owner</th>
-                <th
-                  scope="col"
-                  className="p-4 font-medium text-sm"
-                  style={{ color: 'var(--muted)' }}
-                  aria-sort={sortKey === 'amount' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
-                >
-                  Amount at Stake
-                </th>
-                <th
-                  scope="col"
-                  className="p-4 font-medium text-sm"
-                  style={{ color: 'var(--muted)' }}
-                  aria-sort={sortKey === 'deadline' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
-                >
-                  Deadline
-                </th>
+                <SortableHeader
+                  label="Amount at Stake"
+                  fieldKey="amount"
+                  currentSortKey={sortKey}
+                  currentSortDir={sortDir}
+                  onSort={handleHeaderSort}
+                />
+                <SortableHeader
+                  label="Deadline"
+                  fieldKey="deadline"
+                  currentSortKey={sortKey}
+                  currentSortDir={sortDir}
+                  onSort={handleHeaderSort}
+                />
                 <th scope="col" className="p-4 font-medium text-sm text-right" style={{ color: 'var(--muted)' }}>Actions</th>
               </tr>
             </thead>
@@ -284,10 +318,10 @@ export default function PendingValidations() {
                     <td className="p-4">
                       <div className="flex flex-col">
                         <Text role="body" as="p" className="text-sm">{task.deadline}</Text>
-                        <span className="text-sm font-medium" style={{ color: remaining <= 3 ? 'var(--danger)' : 'var(--success)' }}>
+                        <span className="text-sm font-medium" style={{ color: remaining <= CRITICAL_DAYS_THRESHOLD ? 'var(--danger)' : 'var(--success)' }}>
                           {remaining} days left
                         </span>
-                        {remaining <= 3 && (
+                        {remaining <= CRITICAL_DAYS_THRESHOLD && (
                           <span className="sr-only">Urgent</span>
                         )}
                         <CountdownDeadline deadline={task.deadline} />
@@ -340,6 +374,17 @@ export default function PendingValidations() {
         </div>
       </div>
 
+      {actionError && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="mx-auto w-full max-w-2xl rounded-lg border px-4 py-3 text-sm"
+          style={{ background: 'var(--danger-transparent)', borderColor: 'var(--danger)', color: 'var(--danger)' }}
+        >
+          {actionError}
+        </div>
+      )}
+
       <ConfirmationModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -350,3 +395,49 @@ export default function PendingValidations() {
     </div>
   );
 }
+
+interface SortableHeaderProps {
+  label: string;
+  fieldKey: PendingSortKey;
+  currentSortKey: PendingSortKey;
+  currentSortDir: SortDirection;
+  onSort: (key: PendingSortKey) => void;
+}
+
+function SortableHeader({
+  label,
+  fieldKey,
+  currentSortKey,
+  currentSortDir,
+  onSort,
+}: SortableHeaderProps) {
+  const active = currentSortKey === fieldKey;
+  const ariaSort = active
+    ? currentSortDir === 'asc'
+      ? 'ascending'
+      : 'descending'
+    : undefined;
+
+  return (
+    <th
+      scope="col"
+      className="p-4 font-medium text-sm"
+      style={{ color: 'var(--muted)' }}
+      aria-sort={ariaSort}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(fieldKey)}
+        className="flex items-center gap-1.5 font-medium text-sm text-left transition hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] rounded"
+        style={{ color: 'var(--muted)', background: 'transparent', border: 'none', padding: 0 }}
+        aria-label={`Sort ${label} column`}
+      >
+        <span>{label}</span>
+        <span aria-hidden="true" className="text-xs">
+          {active ? (currentSortDir === 'asc' ? '↑' : '↓') : '↕'}
+        </span>
+      </button>
+    </th>
+  );
+}
+

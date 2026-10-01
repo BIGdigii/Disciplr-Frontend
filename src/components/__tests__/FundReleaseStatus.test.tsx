@@ -1,6 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { FundReleaseStatus, truncateMiddle } from '../FundReleaseStatus';
+import {
+  FundReleaseStatus,
+  MAX_AMOUNT,
+  truncateMiddle,
+} from '../FundReleaseStatus';
 
 let mockNetwork: 'TESTNET' | 'PUBLIC' | null = 'TESTNET';
 
@@ -87,7 +91,7 @@ describe('FundReleaseStatus', () => {
     expect(screen.getByText(/Settlement transaction details will appear/)).toBeInTheDocument();
   });
 
-  it('handles missing transaction details for final outcomes', () => {
+  it('throws invariant error for missing transaction details on released outcome', () => {
     render(
       <FundReleaseStatus
         outcome="released"
@@ -97,17 +101,45 @@ describe('FundReleaseStatus', () => {
       />
     );
 
-    expect(screen.getByText('Pending confirmation')).toBeInTheDocument();
-    expect(screen.getByText('Pending transaction')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.getByText('Cannot load settlement status')).toBeInTheDocument();
+    expect(screen.getByText(/Settlement transaction details are required for released funds/)).toBeInTheDocument();
   });
 
-  it('handles a missing destination address for final outcomes', () => {
+  it('throws invariant error for pending outcome with transaction details', () => {
+    render(
+      <FundReleaseStatus
+        outcome="pending"
+        amount={100}
+        currency="USDC"
+        transaction={{ hash: 'hash', timestamp: 'time' }}
+      />
+    );
+
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.getByText(/Pending settlement cannot have transaction details/)).toBeInTheDocument();
+  });
+
+  it('renders loading state', () => {
+    render(
+      <FundReleaseStatus
+        outcome="pending"
+        amount={100}
+        currency="USDC"
+        isLoading
+      />
+    );
+
+    expect(screen.getByText('Loading settlement status...')).toBeInTheDocument();
+  });
+
+  it('handles a missing destination address for final outcomes when transaction exists', () => {
     render(
       <FundReleaseStatus
         outcome="redirected"
         amount={50}
         currency="USDC"
-        transaction={{ hash: 'hashwithdestinationmissing' }}
+        transaction={{ hash: 'hash', timestamp: 'time' }}
       />
     );
 
@@ -147,5 +179,247 @@ describe('FundReleaseStatus', () => {
       rerender(<FundReleaseStatus outcome="redirected" amount={1} currency="XLM" />);
       expect(document.querySelector('.fund-release-status--redirected')).not.toBeNull();
     });
+  });
+
+  describe('bounds and invariants', () => {
+    it('caps the amount at MAX_AMOUNT', () => {
+      render(
+        <FundReleaseStatus
+          outcome="pending"
+          amount={MAX_AMOUNT + 5000}
+          currency="USDC"
+        />
+      );
+
+      expect(screen.getByText(`${MAX_AMOUNT.toLocaleString()} USDC`)).toBeInTheDocument();
+    });
+
+    it('renders zero for a negative or non-finite amount', () => {
+      render(<FundReleaseStatus outcome="pending" amount={-100} currency="USDC" />);
+      expect(screen.getByText('0 USDC')).toBeInTheDocument();
+
+      render(<FundReleaseStatus outcome="pending" amount={NaN} currency="USDC" />);
+      expect(screen.getByText('0 USDC')).toBeInTheDocument();
+    });
+
+    it('truncates over-long currency strings', () => {
+      render(
+        <FundReleaseStatus
+          outcome="pending"
+          amount={100}
+          currency={'X'.repeat(40)}
+        />
+      );
+
+      expect(screen.getByText(`100 ${'X'.repeat(16)}`)).toBeInTheDocument();
+    });
+
+    it('logs a warning when a final outcome is missing a destination address', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      render(<FundReleaseStatus outcome="released" amount={100} currency="USDC" />);
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[FundReleaseStatus] invariant violation'),
+        expect.objectContaining({
+          outcome: 'released',
+          violations: expect.arrayContaining(['final-outcome-missing-destination']),
+        }),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('logs a warning when a pending outcome carries settlement details', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      render(
+        <FundReleaseStatus
+          outcome="pending"
+          amount={100}
+          currency="USDC"
+          destinationAddress="GSUCCESSDESTINATION1234567890"
+          transaction={{ hash: 'somehash' }}
+        />
+      );
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[FundReleaseStatus] invariant violation'),
+        expect.objectContaining({
+          outcome: 'pending',
+          violations: expect.arrayContaining(['pending-has-settlement-details']),
+        }),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('logs a warning for an over-long destination address', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      render(
+        <FundReleaseStatus
+          outcome="released"
+          destinationAddress={'G'.repeat(200)}
+          amount={100}
+          currency="USDC"
+          transaction={{ hash: 'hash123' }}
+        />
+      );
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[FundReleaseStatus] invariant violation'),
+        expect.objectContaining({
+          violations: expect.arrayContaining(['destination-overflow']),
+        }),
+      );
+      warnSpy.mockRestore();
+    });
+  });
+});
+
+describe('FundReleaseStatus hostile input boundary', () => {
+  beforeEach(() => {
+    mockNetwork = 'TESTNET';
+  });
+
+  it('renders a network mismatch notice when the contract and wallet networks differ', () => {
+    render(
+      <FundReleaseStatus
+        outcome="released"
+        destinationAddress="GSUCCESSDESTINATION1234567890"
+        amount={100}
+        currency="USDC"
+        network="PUBLIC"
+        transaction={{ hash: 'abcdef1234567890abcdef1234567890' }}
+      />
+    );
+
+    const notice = screen.getByRole('status', { name: 'Network mismatch notice' });
+    expect(notice.textContent).toMatch(/mainnet/);
+    expect(notice.textContent).toMatch(/testnet/);
+  });
+
+  it('does not surface a network mismatch when contract and wallet networks agree', () => {
+    render(
+      <FundReleaseStatus
+        outcome="released"
+        amount={100}
+        currency="USDC"
+        network="TESTNET"
+        transaction={{ hash: 'abcdef1234567890abcdef1234567890' }}
+      />
+    );
+
+    expect(screen.queryByRole('status', { name: 'Network mismatch notice' })).not.toBeInTheDocument();
+  });
+
+  it('uses the contract network (not the wallet network) for the explorer link when provided', () => {
+    render(
+      <FundReleaseStatus
+        outcome="released"
+        amount={100}
+        currency="USDC"
+        network="PUBLIC"
+        transaction={{ hash: 'abcdef1234567890abcdef1234567890' }}
+      />
+    );
+
+    expect(screen.getByRole('link', { name: /Stellar Public explorer/i })).toHaveAttribute(
+      'href',
+      'https://stellar.expert/explorer/public/tx/abcdef1234567890abcdef1234567890'
+    );
+  });
+
+  it('falls back to the wallet network when no contract network is provided', () => {
+    mockNetwork = 'TESTNET';
+
+    render(
+      <FundReleaseStatus
+        outcome="released"
+        amount={100}
+        currency="USDC"
+        transaction={{ hash: 'abcdef1234567890abcdef1234567890' }}
+      />
+    );
+
+    expect(screen.getByRole('link', { name: /Stellar Testnet explorer/i })).toHaveAttribute(
+      'href',
+      'https://stellar.expert/explorer/testnet/tx/abcdef1234567890abcdef1234567890'
+    );
+  });
+
+  it('refuses to build an explorer link for a hostile transaction hash', () => {
+    render(
+      <FundReleaseStatus
+        outcome="released"
+        amount={100}
+        currency="USDC"
+        transaction={{ hash: 'javascript:alert(1)' }}
+      />
+    );
+
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.getByText('Invalid transaction hash')).toBeInTheDocument();
+  });
+
+  it('surfaces an unverified marker for an implausible destination address', () => {
+    render(
+      <FundReleaseStatus
+        outcome="redirected"
+        destinationAddress="https://evil.example/steal"
+        amount={100}
+        currency="USDC"
+      />
+    );
+
+    expect(screen.getByText(/unverified/)).toBeInTheDocument();
+    expect(screen.queryByText('Not available')).not.toBeInTheDocument();
+  });
+
+  it('renders an unavailable amount for hostile numeric input', () => {
+    render(
+      <FundReleaseStatus
+        outcome="released"
+        amount={Number.NaN}
+        currency="USDC"
+        transaction={{ hash: 'abcdef1234567890abcdef1234567890' }}
+      />
+    );
+
+    expect(screen.getByText(/Unavailable USDC/)).toBeInTheDocument();
+  });
+
+  it('renders an unknown currency symbol for hostile currency input', () => {
+    render(
+      <FundReleaseStatus
+        outcome="released"
+        amount={100}
+        currency="US$; DROP TABLE vaults"
+        transaction={{ hash: 'abcdef1234567890abcdef1234567890' }}
+      />
+    );
+
+    expect(screen.getByText(/100 UNKNOWN/)).toBeInTheDocument();
+  });
+
+  it("renders 'Unknown' for an unparseable settlement timestamp", () => {
+    render(
+      <FundReleaseStatus
+        outcome="released"
+        amount={100}
+        currency="USDC"
+        transaction={{ hash: 'abcdef1234567890abcdef1234567890', timestamp: 'gibberish' }}
+      />
+    );
+
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
+    expect(screen.queryByText('Pending confirmation')).not.toBeInTheDocument();
+  });
+
+  it('truncates a hostile non-string destination safely', () => {
+    render(
+      <FundReleaseStatus outcome="released" amount={100} currency="USDC" />
+    );
+
+    expect(truncateMiddle(undefined as never)).toBe('Unavailable');
   });
 });

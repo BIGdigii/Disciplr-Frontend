@@ -9,8 +9,8 @@ import {
   computeDashboardSummary,
   type Deadline,
   type Activity,
-  type VaultPreview,
 } from '../dashboard';
+import type { Vault, VaultStatus } from '../../types/vault';
 
 describe('Dashboard Utility Helpers', () => {
   // A fixed timestamp representing 2026-06-27T12:00:00Z
@@ -56,23 +56,26 @@ describe('Dashboard Utility Helpers', () => {
     });
   });
 
+  // relativeTime delegates to the shared Intl.RelativeTimeFormat-based
+  // formatRelativeTime() utility (see src/utils/relativeTime.ts), which
+  // produces spelled-out units ("30 minutes ago") rather than abbreviations.
   describe('relativeTime', () => {
-    it('returns "just now" when difference is less than an hour', () => {
+    it('returns a minutes-ago string when difference is less than an hour', () => {
       // 30 minutes ago
       const iso = new Date(MOCK_NOW - 30 * 60 * 1000).toISOString();
-      expect(relativeTime(iso, MOCK_NOW)).toBe('just now');
+      expect(relativeTime(iso, MOCK_NOW)).toBe('30 minutes ago');
     });
 
-    it('returns "Xh ago" when difference is between 1 and 24 hours', () => {
+    it('returns "X hours ago" when difference is between 1 and 24 hours', () => {
       // 5 hours ago
       const iso = new Date(MOCK_NOW - 5 * 60 * 60 * 1000).toISOString();
-      expect(relativeTime(iso, MOCK_NOW)).toBe('5h ago');
+      expect(relativeTime(iso, MOCK_NOW)).toBe('5 hours ago');
     });
 
-    it('returns "Xd ago" when difference is 24 hours or more', () => {
+    it('returns "X days ago" when difference is 24 hours or more', () => {
       // 3 days ago
       const iso = new Date(MOCK_NOW - 3 * 24 * 60 * 60 * 1000).toISOString();
-      expect(relativeTime(iso, MOCK_NOW)).toBe('3d ago');
+      expect(relativeTime(iso, MOCK_NOW)).toBe('3 days ago');
     });
   });
 
@@ -166,10 +169,10 @@ describe('Dashboard Utility Helpers', () => {
       expect(processed[1].id).toBe('a2');
 
       // Check formatting
-      expect(processed[0].relativeTime).toBe('1d ago'); // 2026-06-27T12:00:00 - 2026-06-26T12:00:00 = 24h
+      expect(processed[0].relativeTime).toBe('1 day ago'); // 2026-06-27T12:00:00 - 2026-06-26T12:00:00 = 24h
       expect(processed[0].formattedAmount).toBeUndefined();
 
-      expect(processed[1].relativeTime).toBe('2d ago'); // 48h
+      expect(processed[1].relativeTime).toBe('2 days ago'); // 48h
       expect(processed[1].formattedAmount).toBe('2,000 USDC');
     });
 
@@ -179,23 +182,36 @@ describe('Dashboard Utility Helpers', () => {
       ];
       const processed = processActivity(activities, MOCK_NOW);
       expect(processed).toHaveLength(1);
-      expect(processed[0].relativeTime).toBe('just now');
+      expect(processed[0].relativeTime).toBe('15 minutes ago');
     });
   });
 
   describe('computeDashboardSummary', () => {
     const makeVault = (
       id: string,
-      status: VaultPreview['status'],
+      status: VaultStatus,
       amount: number,
-    ): VaultPreview => ({
+      pendingMilestoneCount: number = 0,
+    ): Vault => ({
       id,
       name: `Vault ${id}`,
       amount,
       currency: 'USDC',
       status,
-      progressPct: 0,
+      createdAt: '2026-01-01T00:00:00Z',
       deadline: '2026-12-31T00:00:00Z',
+      creatorAddress: 'GCREATOR',
+      successAddress: 'GSUCCESS',
+      failureAddress: 'GFAILURE',
+      contractAddress: 'GCONTRACT',
+      milestones: Array.from({ length: pendingMilestoneCount }, (_, i) => ({
+        id: `m${i}`,
+        title: `Milestone ${i}`,
+        description: 'Test milestone',
+        criteria: 'Test criteria',
+        status: 'pending' as const,
+      })),
+      transactions: [],
     });
 
     it('returns all zeros for an empty vault list', () => {
@@ -217,6 +233,16 @@ describe('Dashboard Utility Helpers', () => {
       const result = computeDashboardSummary(vaults);
       expect(result.totalLocked).toBe(1500);
       expect(result.activeVaults).toBe(2);
+    });
+
+    it('counts pending milestones across all vaults', () => {
+      const vaults = [
+        makeVault('1', 'active', 1000, 3),
+        makeVault('2', 'active', 500, 2),
+        makeVault('3', 'completed', 200, 0),
+      ];
+      const result = computeDashboardSummary(vaults);
+      expect(result.pendingMilestones).toBe(5);
     });
 
     it('computes completionRate as completed/(completed+failed+cancelled)*100', () => {
@@ -253,17 +279,17 @@ describe('Dashboard Utility Helpers', () => {
 
     it('handles mixed statuses correctly end-to-end', () => {
       const vaults = [
-        makeVault('1', 'active', 1000),
-        makeVault('2', 'active', 2000),
-        makeVault('3', 'pending_validation', 500),
-        makeVault('4', 'completed', 0),
-        makeVault('5', 'failed', 0),
-        makeVault('6', 'cancelled', 0),
+        makeVault('1', 'active', 1000, 2),
+        makeVault('2', 'active', 2000, 1),
+        makeVault('3', 'pending_validation', 500, 3),
+        makeVault('4', 'completed', 0, 0),
+        makeVault('5', 'failed', 0, 0),
+        makeVault('6', 'cancelled', 0, 0),
       ];
       const result = computeDashboardSummary(vaults);
       expect(result.totalLocked).toBe(3500);
       expect(result.activeVaults).toBe(3);
-      expect(result.pendingMilestones).toBe(3);
+      expect(result.pendingMilestones).toBe(6);
       // 1 completed / 3 terminal = 33.33 → rounded to 33
       expect(result.completionRate).toBe(33);
     });

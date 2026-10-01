@@ -41,7 +41,11 @@ describe('Wallet lifecycle integration', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         vi.useRealTimers();
-        freighterMocks.isAllowed.mockResolvedValue(false);
+        // A prior test's disconnect() persists WALLET_DISCONNECTED_KEY in
+        // localStorage, which would otherwise make checkConnection() skip
+        // auto-reconnect on the next test's mount.
+        localStorage.clear();
+        freighterMocks.isAllowed.mockResolvedValue({ isAllowed: false });
         freighterMocks.setAllowed.mockResolvedValue(undefined);
         freighterMocks.requestAccess.mockResolvedValue(true);
         freighterMocks.getAddress.mockResolvedValue({ address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890', error: null });
@@ -209,7 +213,7 @@ describe('Wallet lifecycle integration', () => {
 
         expect(await screen.findByText('12.5000000')).toBeInTheDocument();
 
-        fireEvent.click(screen.getByRole('button', { name: /disconnect/i }));
+        fireEvent.click(screen.getByRole('menuitem', { name: /disconnect/i }));
 
         expect(await screen.findByRole('button', { name: /connect wallet/i })).toBeInTheDocument();
         expect(screen.queryByText('12.5000000')).not.toBeInTheDocument();

@@ -49,6 +49,10 @@ function getConnectedButton() {
 describe('WalletConnectButton', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // A prior test's disconnect() persists WALLET_DISCONNECTED_KEY in
+    // localStorage, which would otherwise make checkConnection() skip
+    // auto-reconnect on the next test's mount.
+    localStorage.clear();
     mockIsAllowed.mockResolvedValue({ isAllowed: false });
     mockSetAllowed.mockResolvedValue({ isAllowed: false });
     mockRequestAccess.mockResolvedValue({ address: walletAddress });
@@ -66,7 +70,8 @@ describe('WalletConnectButton', () => {
     fireEvent.click(screen.getByRole('button', { name: /connect wallet/i }));
 
     expect(screen.getByRole('heading', { name: /connect wallet/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /freighter connected/i })).toBeInTheDocument();
+    // Wallet is not yet connected at this point, so the option shows "Available".
+    expect(screen.getByRole('button', { name: /freighter available/i })).toBeInTheDocument();
     expect(screen.getByText('Albedo')).toBeInTheDocument();
   });
 
@@ -86,7 +91,7 @@ describe('WalletConnectButton', () => {
     renderWalletButton();
 
     fireEvent.click(screen.getByRole('button', { name: /connect wallet/i }));
-    fireEvent.click(screen.getByRole('button', { name: /freighter connected/i }));
+    fireEvent.click(screen.getByRole('button', { name: /freighter available/i }));
 
     await waitFor(() => {
       expect(getConnectedButton()).toBeInTheDocument();
@@ -101,7 +106,7 @@ describe('WalletConnectButton', () => {
     expect(screen.getByText('GBVZ3K...QK7L')).toBeInTheDocument();
     expect(screen.getByText('0.00')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /disconnect/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /disconnect/i }));
 
     expect(screen.getByRole('button', { name: /connect wallet/i })).toBeInTheDocument();
     expect(screen.queryByText('GBVZ3K...QK7L')).not.toBeInTheDocument();
@@ -116,11 +121,11 @@ describe('WalletConnectButton', () => {
     });
 
     fireEvent.click(getConnectedButton());
-    expect(screen.getByRole('button', { name: /disconnect/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /disconnect/i })).toBeInTheDocument();
 
     fireEvent.mouseDown(screen.getByTestId('outside-target'));
 
-    expect(screen.queryByRole('button', { name: /disconnect/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /disconnect/i })).not.toBeInTheDocument();
   });
 
   it('renders Freighter error state after a rejected connection attempt', async () => {
@@ -129,17 +134,16 @@ describe('WalletConnectButton', () => {
     renderWalletButton();
 
     fireEvent.click(screen.getByRole('button', { name: /connect wallet/i }));
-    fireEvent.click(screen.getByRole('button', { name: /freighter connected/i }));
+    fireEvent.click(screen.getByRole('button', { name: /freighter available/i }));
 
+    // On failure the modal stays open (so the user can retry) and shows the
+    // error inline, rather than closing and requiring the trigger to be
+    // clicked again.
     await waitFor(() => {
-      expect(screen.queryByRole('heading', { name: /connect wallet/i })).not.toBeInTheDocument();
+      expect(screen.getByText('Freighter is locked')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /connect wallet/i }));
-
-    expect(screen.getByText('Freighter is locked')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /connect wallet/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /connect wallet/i })).toBeInTheDocument();
     expect(consoleError).toHaveBeenCalledWith('Connection error', expect.any(Error));
     consoleError.mockRestore();
   });

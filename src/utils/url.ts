@@ -12,6 +12,8 @@ export function normalizeEvidenceUrl(value: string): string | null {
 
   // Reject raw control characters (including newlines/tabs) that some
   // renderers mishandle. Allow percent-encoded control bytes (e.g. %0A).
+  // Matching raw control bytes is intentional here, hence the rule override.
+  // eslint-disable-next-line no-control-regex
   if (/[\x00-\x1f\x7f]/.test(trimmed)) {
     return null
   }

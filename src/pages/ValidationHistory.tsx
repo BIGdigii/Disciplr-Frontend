@@ -9,6 +9,7 @@ import {
 import type { ValidationHistoryStatusFilter } from '../utils/paginate';
 import { downloadCsv, toCsv } from '../utils/csv';
 import { StatusChip } from '../components/StatusChip';
+import { mapValidationStatusToChipStatus } from '../utils/verifierStatus';
 import {
   VALIDATION_HISTORY_PAGE_SIZE_OPTIONS,
   persistValidationHistoryPageSize,
@@ -17,7 +18,7 @@ import {
 
 export default function ValidationHistory() {
   const navigate = useNavigate();
-  const { validationHistory } = useVerifierStore();
+  const validationHistory = useVerifierStore((state) => state.validationHistory);
   const [statusFilter, setStatusFilter] = useState<ValidationHistoryStatusFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [fromDate, setFromDate] = useState('');
@@ -35,7 +36,10 @@ export default function ValidationHistory() {
     () => filterValidationHistory(validationHistory, { status: statusFilter, query: searchQuery, from: fromDate || undefined, to: toDate || undefined, milestone: milestoneFilter || undefined }),
     [validationHistory, statusFilter, searchQuery, fromDate, toDate, milestoneFilter],
   );
-  const pagination = paginate(filteredHistory, page, pageSize);
+  const pagination = useMemo(
+    () => paginate(filteredHistory, page, pageSize),
+    [filteredHistory, page, pageSize]
+  );
 
   const updateStatusFilter = (status: ValidationHistoryStatusFilter) => {
     setStatusFilter(status);
@@ -257,7 +261,7 @@ export default function ValidationHistory() {
                 <div className="flex flex-col gap-2 md:w-1/3">
                   <div className="flex items-center gap-3">
                     <StatusChip
-                      status={task.status === 'pending' ? 'pending_validation' : task.status}
+                      status={mapValidationStatusToChipStatus(task.status)}
                       className="uppercase"
                       size="sm"
                     />

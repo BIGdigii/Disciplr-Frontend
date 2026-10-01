@@ -120,7 +120,7 @@ export function toCsv(data: Array<ValidationTask | Transaction | AnalyticsRow>, 
 
 export function downloadCsv(csv: string, filename: string): void {
   if (typeof document === 'undefined' || typeof URL === 'undefined') return;
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);

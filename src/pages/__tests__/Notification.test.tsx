@@ -1,21 +1,27 @@
-import { render, screen, fireEvent } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { act, render, screen, fireEvent } from "@testing-library/react";
+import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { Ref, ReactNode } from "react";
 import Notification from "../Notification";
+import NotificationSettings from "../NotificationSettings";
 import { useNotification } from "@/Zustand/Store";
 import { getNotifications } from "@/components/Notification/exampleNotification/example";
 
 vi.mock("framer-motion", () => {
+  // @ts-expect-error -- require is needed inside vi.mock factory (hoisted before imports)
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require("react");
   return {
     motion: {
-      div: React.forwardRef(({ children, ...props }, ref) => (
-        <div ref={ref} {...props}>
-          {children}
-        </div>
-      )),
+      div: React.forwardRef(
+        ({ children, ...props }: Record<string, unknown>, ref: Ref<HTMLDivElement>) => (
+          <div ref={ref} {...(props as JSX.IntrinsicElements["div"])}>
+            {children as ReactNode}
+          </div>
+        ),
+      ),
     },
-    AnimatePresence: ({ children }) => children,
+    AnimatePresence: ({ children }: { children: ReactNode }) => children,
     useReducedMotion: () => false,
   };
 });
@@ -29,7 +35,6 @@ const initialNotifications = getNotifications();
 function resetStore() {
   useNotification.setState({
     notification: initialNotifications,
-    unreadCount: initialNotifications.filter((n) => !n.isRead).length,
   });
 }
 
@@ -54,7 +59,6 @@ describe("Notification page", () => {
 
   it("displays pagination info", () => {
     renderNotification();
-    const totalPages = Math.ceil(initialNotifications.length / 5);
     expect(
       screen.getByRole("navigation", { name: "Notifications pagination" }),
     ).toBeInTheDocument();
@@ -111,7 +115,6 @@ describe("Notification page", () => {
         ...n,
         isRead: true,
       })),
-      unreadCount: 0,
     });
     renderNotification();
 
@@ -136,6 +139,17 @@ describe("Notification page", () => {
       (n) => n.id === unreadNotification.id,
     );
     expect(updated!.isRead).toBe(true);
+  });
+
+  it("ignores a stale dismiss action without changing notifications", () => {
+    renderNotification();
+    const before = useNotification.getState().notification;
+
+    act(() => {
+      useNotification.getState().dismiss("notification-that-no-longer-exists");
+    });
+
+    expect(useNotification.getState().notification).toEqual(before);
   });
 
   it("resets to page 1 when filter changes", () => {
@@ -215,7 +229,7 @@ describe("Notification page", () => {
 
     const state = useNotification.getState();
     expect(state.notification).toEqual([]);
-    expect(state.unreadCount).toBe(0);
+    expect(state.notification.filter((n) => !n.isRead).length).toBe(0);
     expect(screen.getByText("No notifications found.")).toBeInTheDocument();
   });
 
@@ -236,7 +250,6 @@ describe("Notification page", () => {
     const smallList = initialNotifications.slice(0, 6);
     useNotification.setState({
       notification: smallList,
-      unreadCount: smallList.filter((n) => !n.isRead).length,
     });
     renderNotification();
 
@@ -318,14 +331,13 @@ describe("Notification page", () => {
     });
 
     it("announces 'No notifications found' when filter matches nothing", () => {
-      useNotification.setState({
-        notification: initialNotifications.map((n) => ({
-          ...n,
-          isRead: true,
-        })),
-        unreadCount: 0,
-      });
-      renderNotification();
+    useNotification.setState({
+      notification: initialNotifications.map((n) => ({
+        ...n,
+        isRead: true,
+      })),
+    });
+    renderNotification();
       const liveRegion = screen.getByRole("status");
 
       // Open filter panel
@@ -389,5 +401,71 @@ describe("Notification page", () => {
       const updated = state.notification.find((n) => n.id === firstUnread.id);
       expect(updated!.isRead).toBe(true);
     });
+  });
+
+  describe("navigation to settings", () => {
+    it("navigates from the bell icon through to the settings screen", () => {
+      render(
+        <MemoryRouter initialEntries={["/notifications"]}>
+          <Routes>
+            <Route path="/notifications" element={<Notification />} />
+            <Route path="/notifications/settings" element={<NotificationSettings />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      const settingsLink = screen.getByRole("link", {
+        name: "Notification Preferences",
+      });
+      expect(settingsLink).toHaveAttribute("href", "/notifications/settings");
+
+      fireEvent.click(settingsLink);
+
+      expect(
+        screen.getByRole("heading", { name: "Notification Settings" }),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("Notification page with a large inbox", () => {
+  // More than FULL_PAGE_LIST_LIMIT * itemsPerPage, so the windowed pagination
+  // (and with it the jump control) is actually engaged.
+  const bulkNotifications = Array.from({ length: 45 }, (_, index) => ({
+    ...initialNotifications[0],
+    id: `ntf_bulk_${index}`,
+  }));
+
+  beforeEach(() => {
+    useNotification.setState({ notification: bulkNotifications });
+  });
+
+  it("keeps the numbered controls bounded and offers a jump control", () => {
+    renderNotification();
+
+    expect(screen.getByText("Page 1 of 9")).toBeInTheDocument();
+
+    const pageButtons = screen
+      .getAllByRole("button")
+      .filter((button) => /^Go to page \d+$/.test(button.getAttribute("aria-label") ?? ""));
+    // The documented near-start window: 1 2 3 4 5 … 9. Nothing scales with 45 items.
+    expect(pageButtons).toHaveLength(6);
+    expect(screen.getByRole("button", { name: "Go to page 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Go to page 9" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Go to page 7" }),
+    ).not.toBeInTheDocument();
+
+    expect(screen.getByLabelText("Jump to page")).toBeInTheDocument();
+  });
+
+  it("jumps straight to a page the window does not show", () => {
+    renderNotification();
+
+    const input = screen.getByLabelText("Jump to page");
+    fireEvent.change(input, { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Go" }));
+
+    expect(screen.getByText("Page 8 of 9")).toBeInTheDocument();
   });
 });

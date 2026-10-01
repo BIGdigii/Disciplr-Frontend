@@ -1,3 +1,4 @@
+import { CONTRACT_ADDRESS } from '@/__tests__/fixtures/stellarAddresses';
 import {
   fireEvent,
   render,
@@ -6,18 +7,68 @@ import {
   within,
 } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MASTER_VAULTS } from "../../fixtures/vaults";
 import VaultDetail from "../VaultDetail";
 
-vi.mock("../../context/WalletContext", () => ({
-  useWallet: () => ({ network: "TESTNET" }),
+const CREATOR_ADDRESS = "GBVZ3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK7L";
+
+const { mockDownloadIcsEvent } = vi.hoisted(() => ({
+  mockDownloadIcsEvent: vi.fn(),
 }));
+
+const { mockWallet } = vi.hoisted(() => ({
+  mockWallet: {
+    address: "GBVZ3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK7L",
+    network: "TESTNET",
+  },
+}));
+
+const { mockGetVault, mockSubmitVaultAction } = vi.hoisted(() => ({
+  mockGetVault: vi.fn(),
+  mockSubmitVaultAction: vi.fn(),
+}));
+
+vi.mock("../../context/WalletContext", () => ({
+  useWallet: () => mockWallet,
+}));
+
+vi.mock("../../services/vaultService", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../services/vaultService")>();
+  return {
+    ...actual,
+    getVault: mockGetVault,
+    submitVaultAction: mockSubmitVaultAction,
+  };
+});
+
+vi.mock("../../utils/ics", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../utils/ics")>();
+  return {
+    ...actual,
+    downloadIcsEvent: mockDownloadIcsEvent,
+  };
+});
 
 const ORIGINAL_VAULT_1_CONTRACT = MASTER_VAULTS["1"].contractAddress;
 
+beforeEach(() => {
+  mockWallet.address = CREATOR_ADDRESS;
+  mockWallet.network = "TESTNET";
+  mockGetVault.mockClear();
+  mockGetVault.mockImplementation(async (id: string) => {
+    if (Object.prototype.hasOwnProperty.call(MASTER_VAULTS, id)) {
+      return MASTER_VAULTS[id];
+    }
+    return undefined;
+  });
+  mockSubmitVaultAction.mockReset();
+  mockSubmitVaultAction.mockResolvedValue(undefined);
+});
+
 afterEach(() => {
   MASTER_VAULTS["1"].contractAddress = ORIGINAL_VAULT_1_CONTRACT;
+  mockDownloadIcsEvent.mockReset();
 });
 
 function renderVaultDetail(id: string) {
@@ -28,6 +79,17 @@ function renderVaultDetail(id: string) {
       </Routes>
     </MemoryRouter>,
   );
+}
+
+// Vault fixtures use deadlines computed relative to "now" (see
+// src/fixtures/vaults.ts), so tests must format the actual fixture value the
+// same way the page does rather than asserting a hardcoded date string.
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function CreateVaultStateProbe() {
@@ -46,12 +108,14 @@ describe("VaultDetail", () => {
     expect(
       await screen.findByRole("heading", { name: "Alpha Vault" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getAllByText("Active").length).toBeGreaterThan(0);
     expect(screen.getByText("12,500")).toBeInTheDocument();
     expect(screen.getAllByText("USDC").length).toBeGreaterThan(0);
 
     expect(screen.getByText("Status Timeline")).toBeInTheDocument();
-    expect(screen.getByText(/Deadline Jul 15, 2024/)).toBeInTheDocument();
+    expect(
+      screen.getByText(`Deadline ${fmtDate(MASTER_VAULTS["1"].deadline)}`),
+    ).toBeInTheDocument();
     // CountdownDeadline active vault should show time remaining or expired
     expect(screen.getByText(/Overdue|remaining/)).toBeInTheDocument();
 
@@ -102,7 +166,9 @@ describe("VaultDetail", () => {
 
     // Verify Countdown is replaced by status text
     expect(screen.queryByText(/Overdue|remaining/)).not.toBeInTheDocument();
-    expect(screen.getByText("Deadline Jan 1, 2024")).toBeInTheDocument();
+    expect(
+      screen.getByText(`Deadline ${fmtDate(MASTER_VAULTS["2"].deadline)}`),
+    ).toBeInTheDocument();
 
     expect(screen.getByText("Project Delivery")).toBeInTheDocument();
     expect(
@@ -230,10 +296,163 @@ describe("VaultDetail", () => {
     await waitFor(() => {
       expect(mockDownloadIcsEvent).toHaveBeenCalledWith({
         title: 'Alpha Vault deadline',
-        deadline: '2024-07-15T10:00:00Z',
+        deadline: MASTER_VAULTS['1'].deadline,
         description: 'Alpha Vault vault deadline for 12,500 USDC.',
         uid: 'vault-1-deadline',
       });
+    });
+  });
+
+  it('hides the Add to calendar button when the deadline is invalid', async () => {
+    renderVaultDetail('2');
+
+    await screen.findByRole('heading', { name: 'Beta Reserve' });
+    expect(
+      screen.queryByRole('button', { name: /Add to calendar/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders transaction explorer links pointing to the active network", async () => {
+    renderVaultDetail("1");
+
+    await screen.findByRole("heading", { name: "Alpha Vault" });
+
+    const txLinks = screen.getAllByRole("link").filter((a) =>
+      a.getAttribute("href")?.includes("/explorer/") && a.getAttribute("href")?.includes("/tx/"),
+    );
+
+    expect(txLinks.length).toBeGreaterThan(0);
+    txLinks.forEach((link) => {
+      expect(link).toHaveAttribute(
+        "href",
+        expect.stringContaining("/explorer/testnet/tx/"),
+      );
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    });
+  });
+
+  // ── Action buttons ────────────────────────────────────────────────────────
+
+  describe("action buttons", () => {
+    it("Extend Deadline button opens a confirmation modal with correct title and message", async () => {
+      renderVaultDetail("1");
+      await screen.findByRole("heading", { name: "Alpha Vault" });
+
+      fireEvent.click(screen.getByRole("button", { name: /extend deadline/i }));
+
+      expect(
+        await screen.findByRole("heading", { name: "Extend Deadline" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /Are you sure you want to extend the vault deadline\?/i,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("Cancel Vault button opens a confirmation modal with correct title and message", async () => {
+      renderVaultDetail("1");
+      await screen.findByRole("heading", { name: "Alpha Vault" });
+
+      fireEvent.click(screen.getByRole("button", { name: /cancel vault/i }));
+
+      expect(
+        await screen.findByRole("heading", { name: "Cancel Vault" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Are you sure you want to cancel this vault\?/i),
+      ).toBeInTheDocument();
+    });
+
+    it("confirmation modal closes when the Cancel button is clicked", async () => {
+      renderVaultDetail("1");
+      await screen.findByRole("heading", { name: "Alpha Vault" });
+
+      fireEvent.click(screen.getByRole("button", { name: /extend deadline/i }));
+      expect(
+        await screen.findByRole("heading", { name: "Extend Deadline" }),
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+      await waitFor(() => {
+        expect(
+          screen.queryByRole("heading", { name: "Extend Deadline" }),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it("confirmation modal closes after confirming the action", async () => {
+      renderVaultDetail("1");
+      await screen.findByRole("heading", { name: "Alpha Vault" });
+
+      fireEvent.click(screen.getByRole("button", { name: /cancel vault/i }));
+      const dialog = await screen.findByRole("dialog");
+      expect(
+        within(dialog).getByRole("heading", { name: "Cancel Vault" }),
+      ).toBeInTheDocument();
+
+      // Click the confirm button inside the modal (distinct from the page-level button)
+      fireEvent.click(within(dialog).getByRole("button", { name: /^cancel vault$/i }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+    });
+
+    it("Extend Deadline and Cancel Vault buttons are present for an active vault", async () => {
+      renderVaultDetail("1");
+      await screen.findByRole("heading", { name: "Alpha Vault" });
+
+      expect(
+        screen.getByRole("button", { name: /extend deadline/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /cancel vault/i }),
+      ).toBeInTheDocument();
+    });
+
+    it("Validate Milestone button is shown for a pending_validation vault and opens confirmation modal", async () => {
+      renderVaultDetail("5");
+      await screen.findByRole("heading", { name: "Epsilon Pending" });
+
+      const validateBtn = screen.getByRole("button", {
+        name: /validate milestone/i,
+      });
+      expect(validateBtn).toBeInTheDocument();
+
+      fireEvent.click(validateBtn);
+
+      expect(
+        await screen.findByRole("heading", { name: "Validate Milestone" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /Are you sure you want to validate the current milestone\?/i,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("Validate Milestone button is not shown for an active (non-pending_validation) vault", async () => {
+      renderVaultDetail("1");
+      await screen.findByRole("heading", { name: "Alpha Vault" });
+
+      expect(
+        screen.queryByRole("button", { name: /validate milestone/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("action buttons are not rendered for a completed vault", async () => {
+      renderVaultDetail("2");
+      await screen.findByRole("heading", { name: "Beta Reserve" });
+
+      expect(
+        screen.queryByRole("button", { name: /extend deadline/i }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /cancel vault/i }),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -261,7 +480,7 @@ describe("VaultDetail", () => {
     });
 
     it("renders the explorer link pointing to the testnet contract URL", async () => {
-      const validContractAddress = `C${"A".repeat(55)}`;
+      const validContractAddress = CONTRACT_ADDRESS;
       MASTER_VAULTS["1"].contractAddress = validContractAddress;
 
       renderVaultDetail("1");
@@ -297,26 +516,27 @@ describe("VaultDetail", () => {
   // ── Network footer banner ─────────────────────────────────────────────────
 
   describe('NetworkFooterBanner', () => {
-    it('renders the network footer banner with an accessible landmark', () => {
+    it('renders the network footer banner with an accessible landmark', async () => {
       renderVaultDetail('1');
-      expect(screen.getByRole('contentinfo')).toBeInTheDocument();
+      expect(await screen.findByRole('contentinfo')).toBeInTheDocument();
     });
 
-    it('shows the "Testnet" label when network is TESTNET', () => {
+    it('shows the "Testnet" label when network is TESTNET', async () => {
       renderVaultDetail('1');
-      const footer = screen.getByRole('contentinfo');
+      const footer = await screen.findByRole('contentinfo');
       expect(within(footer).getByText('Testnet')).toBeInTheDocument();
     });
 
-    it('displays the contract address text in the footer', () => {
+    it('displays the contract address text in the footer', async () => {
       renderVaultDetail('1');
-      const footer = screen.getByRole('contentinfo');
+      const footer = await screen.findByRole('contentinfo');
       // Vault 1 contract address
       expect(within(footer).getByText('GCONT3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK')).toBeInTheDocument();
     });
 
-    it('renders the explorer link pointing to the testnet contract URL', () => {
+    it('renders the explorer link pointing to the testnet contract URL', async () => {
       renderVaultDetail('1');
+      await screen.findByRole('contentinfo');
       const link = screen.getByRole('link', { name: /View contract.*on Stellar Testnet explorer/i });
       expect(link).toHaveAttribute(
         'href',
@@ -334,9 +554,163 @@ describe("VaultDetail", () => {
       }));
     });
 
-    it('does not render the footer banner on the not-found page', () => {
+    it('does not render the footer banner on the not-found page', async () => {
       renderVaultDetail('999');
-      expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
+      await screen.findByRole('heading', { name: 'Vault not found' });
+      await waitFor(() => {
+        expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  // ── Async boundary ─────────────────────────────────────────────────────────
+
+  describe('async load boundary', () => {
+    it("renders an invalid-identifier state for a hostile route id", async () => {
+      renderVaultDetail("__proto__");
+
+      expect(
+        await screen.findByRole("heading", { name: "Invalid vault identifier" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("heading", { name: "Alpha Vault" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("refuses to render unverified vault state for a malformed response", async () => {
+      mockGetVault.mockResolvedValueOnce({ id: "1" } as never);
+
+      renderVaultDetail("1");
+
+      expect(
+        await screen.findByRole("heading", {
+          name: "Vault data could not be verified",
+        }),
+      ).toBeInTheDocument();
+      expect(screen.getAllByText(/must be/).length).toBeGreaterThan(0);
+      expect(
+        screen.queryByRole("heading", { name: "Alpha Vault" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows an error state and recovers via Retry", async () => {
+      mockGetVault.mockRejectedValueOnce(new Error("network down"));
+
+      renderVaultDetail("1");
+
+      expect(
+        await screen.findByRole("heading", { name: "Failed to load vault" }),
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+
+      expect(
+        await screen.findByRole("heading", { name: "Alpha Vault" }),
+      ).toBeInTheDocument();
+    });
+
+    it("flags a completed vault whose settlement amount does not match the principal", async () => {
+      const releaseTx = MASTER_VAULTS["2"].transactions.find(
+        (tx) => tx.type === "release",
+      );
+      const originalAmount = releaseTx?.amount;
+      if (releaseTx) releaseTx.amount = 9876;
+
+      try {
+        renderVaultDetail("2");
+        await screen.findByRole("heading", { name: "Beta Reserve" });
+
+        const notice = screen.getByRole("alert", {
+          name: "Fund release inconsistency notice",
+        });
+        expect(
+          within(notice).getByText(
+            /does not match the vault principal/i,
+          ),
+        ).toBeInTheDocument();
+      } finally {
+        if (releaseTx) releaseTx.amount = originalAmount;
+      }
+    });
+  });
+
+  // ── Authorization gate on sensitive actions ───────────────────────────────
+
+  describe("action authorization gate", () => {
+    it("disables sensitive actions for a disconnected wallet", async () => {
+      mockWallet.address = null;
+      renderVaultDetail("1");
+      await screen.findByRole("heading", { name: "Alpha Vault" });
+
+      expect(
+        screen.getByRole("button", { name: /extend deadline/i }),
+      ).toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: /cancel vault/i }),
+      ).toBeDisabled();
+      expect(
+        screen.getAllByText(/Connect your wallet to authorize this action/).length,
+      ).toBeGreaterThan(0);
+    });
+
+    it("disables sensitive actions for a wallet that is not the vault creator", async () => {
+      mockWallet.address = "GBOTH3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK7L";
+      renderVaultDetail("1");
+      await screen.findByRole("heading", { name: "Alpha Vault" });
+
+      expect(
+        screen.getByRole("button", { name: /extend deadline/i }),
+      ).toBeDisabled();
+      expect(
+        screen.getAllByText(/not authorized to extend/i).length,
+      ).toBeGreaterThan(0);
+    });
+
+    it("disables sensitive actions when the wallet is on the wrong network", async () => {
+      mockWallet.network = "PUBLIC";
+      renderVaultDetail("1");
+      await screen.findByRole("heading", { name: "Alpha Vault" });
+
+      expect(
+        screen.getByRole("button", { name: /extend deadline/i }),
+      ).toBeDisabled();
+      expect(
+        screen.getAllByText(/wrong network/i).length,
+      ).toBeGreaterThan(0);
+    });
+
+    it("leaves actions enabled for an authorized creator on the expected network", async () => {
+      renderVaultDetail("1");
+      await screen.findByRole("heading", { name: "Alpha Vault" });
+
+      expect(
+        screen.getByRole("button", { name: /extend deadline/i }),
+      ).toBeEnabled();
+      expect(
+        screen.getByRole("button", { name: /cancel vault/i }),
+      ).toBeEnabled();
+    });
+
+    it("locks the confirmation while the action is submitting so it cannot fire twice", async () => {
+      mockSubmitVaultAction.mockReturnValueOnce(new Promise(() => {}));
+
+      renderVaultDetail("1");
+      await screen.findByRole("heading", { name: "Alpha Vault" });
+
+      fireEvent.click(screen.getByRole("button", { name: /cancel vault/i }));
+      const dialog = await screen.findByRole("dialog");
+
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: /^cancel vault$/i }),
+      );
+      expect(mockSubmitVaultAction).toHaveBeenCalledTimes(1);
+
+      const submittingBtn = within(dialog).getByRole("button", {
+        name: /submitting/i,
+      });
+      expect(submittingBtn).toBeDisabled();
+      fireEvent.click(submittingBtn);
+      expect(mockSubmitVaultAction).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -24,6 +24,18 @@ const sourceAssertions: SourceAssertion[] = [
     name: "adopts Switch component for push toggle",
     pattern: /<Switch[\s\S]*label="Push Notification"/,
   },
+  {
+    name: "imports isValidQuietTime from quietHours utility",
+    pattern: /import\s*{[^}]*isValidQuietTime[^}]*}\s*from\s*["'].*quietHours["']/,
+  },
+  {
+    name: "validates quiet hours input with isValidQuietTime",
+    pattern: /isValidQuietTime\(quietHours\)/,
+  },
+  {
+    name: "renders vault notification toggles",
+    pattern: /vaults\.map/,
+  },
 ];
 
 export function assertNotificationSettingsSource(source: string) {
@@ -212,6 +224,64 @@ describe('NotificationSettings component behavior', () => {
     );
     expect(selectedOption).toBeDefined();
     expect(selectedOption?.value).toBe(frequencySelect.value);
+  });
+
+  it('renders Occurrence option for value 1 and includes Not set option', () => {
+    render(<NotificationSettings />);
+
+    const frequencySelect = screen.getByLabelText('Notification Frequency') as HTMLSelectElement;
+    const occurrenceOption = Array.from(frequencySelect.options).find(
+      (opt) => opt.value === '1',
+    );
+    expect(occurrenceOption).toBeDefined();
+    expect(occurrenceOption?.textContent).toBe('Occurrence');
+
+    const notSetOption = Array.from(frequencySelect.options).find(
+      (opt) => opt.value === '',
+    );
+    expect(notSetOption).toBeDefined();
+    expect(notSetOption?.textContent).toBe('Not set');
+  });
+
+  it('renders vault notification toggles and toggles individual vault on click', () => {
+    render(<NotificationSettings />);
+
+    const firstVaultToggle = screen.getByLabelText('First Vault notifications');
+    const secondVaultToggle = screen.getByLabelText('Second Vault notifications');
+
+    // All vault toggles default to off
+    expect(firstVaultToggle).toHaveAttribute('aria-checked', 'false');
+    expect(secondVaultToggle).toHaveAttribute('aria-checked', 'false');
+
+    // Toggle first vault on
+    fireEvent.click(firstVaultToggle);
+    expect(firstVaultToggle).toHaveAttribute('aria-checked', 'true');
+    expect(secondVaultToggle).toHaveAttribute('aria-checked', 'false');
+
+    // Toggle second vault on
+    fireEvent.click(secondVaultToggle);
+    expect(firstVaultToggle).toHaveAttribute('aria-checked', 'true');
+    expect(secondVaultToggle).toHaveAttribute('aria-checked', 'true');
+
+    // Toggle first vault back off
+    fireEvent.click(firstVaultToggle);
+    expect(firstVaultToggle).toHaveAttribute('aria-checked', 'false');
+    expect(secondVaultToggle).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('quiet hours input has aria-invalid when value is invalid', () => {
+    useNotificationPreferences.getState().setQuietHours('invalid');
+
+    const { unmount } = render(<NotificationSettings />);
+    const quietHoursInput = screen.getByLabelText('Quiet Hours') as HTMLInputElement;
+    expect(quietHoursInput).toHaveAttribute('aria-invalid', 'true');
+    unmount();
+
+    // Default "12:00" is valid
+    useNotificationPreferences.getState().reset();
+    render(<NotificationSettings />);
+    const validInput = screen.getByLabelText('Quiet Hours') as HTMLInputElement;
+    expect(validInput).toHaveAttribute('aria-invalid', 'false');
   });
 });
 

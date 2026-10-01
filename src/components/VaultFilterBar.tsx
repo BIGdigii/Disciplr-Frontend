@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { VaultStatus } from '../types/vault';
 import { VAULT_STATUS_ORDER } from '../types/vault';
-import type { VaultFilters } from '../utils/filterVaults';
+import type { VaultFilters } from '../utils/vaultFilter';
 
 interface VaultFilterBarProps {
   value: VaultFilters;

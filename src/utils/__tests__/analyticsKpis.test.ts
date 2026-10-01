@@ -4,7 +4,6 @@ import {
   formatPercentage,
   formatCurrency,
   type AnalyticsDataPoint,
-  type KpiMetrics,
 } from '../analyticsKpis'
 
 describe('analyticsKpis', () => {
@@ -93,7 +92,7 @@ describe('analyticsKpis', () => {
     })
 
     it('should handle null current data gracefully', () => {
-      // @ts-ignore - testing edge case
+      // @ts-expect-error - testing edge case
       const kpis = computeAnalyticsKpis(null)
 
       expect(kpis).toMatchObject({

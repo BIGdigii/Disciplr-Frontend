@@ -1,4 +1,4 @@
-import type { VaultStatus } from "../types/vault";
+import type { VaultStatus, Vault } from "../types/vault";
 import { formatRelativeTime } from "./relativeTime";
 
 export type { VaultStatus };
@@ -67,21 +67,21 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
 }
 
 /**
- * Derive a DashboardSummary from a list of vault previews.
+ * Derive a DashboardSummary from a list of full vaults.
  *
  * - totalLocked: sum of amounts for all active/pending_validation vaults.
  * - activeVaults: count of vaults with status 'active' or 'pending_validation'.
- * - pendingMilestones: proxy using active vault count (real milestone data lives
- *   inside full Vault objects; VaultPreview carries no milestone array).
+ * - pendingMilestones: count of all milestones with status 'pending' across all vaults.
  * - completionRate: completed / (completed + failed) * 100, guarded against
  *   divide-by-zero (returns 0 when no terminal vaults exist).
  */
-export function computeDashboardSummary(vaults: VaultPreview[]): DashboardSummary {
-  const ACTIVE_STATUSES: VaultPreview["status"][] = ["active", "pending_validation"];
-  const TERMINAL_STATUSES: VaultPreview["status"][] = ["completed", "failed", "cancelled"];
+export function computeDashboardSummary(vaults: Vault[]): DashboardSummary {
+  const ACTIVE_STATUSES: Vault["status"][] = ["active", "pending_validation"];
+  const TERMINAL_STATUSES: Vault["status"][] = ["completed", "failed", "cancelled"];
 
   let totalLocked = 0;
   let activeVaults = 0;
+  let pendingMilestones = 0;
   let completedVaults = 0;
   let terminalVaults = 0;
 
@@ -92,6 +92,9 @@ export function computeDashboardSummary(vaults: VaultPreview[]): DashboardSummar
     }
     if (v.status === "completed") completedVaults++;
     if (TERMINAL_STATUSES.includes(v.status)) terminalVaults++;
+    
+    // Count pending milestones from the vault's milestones array
+    pendingMilestones += v.milestones.filter(m => m.status === "pending").length;
   }
 
   const completionRate =
@@ -102,7 +105,7 @@ export function computeDashboardSummary(vaults: VaultPreview[]): DashboardSummar
   return {
     totalLocked,
     activeVaults,
-    pendingMilestones: activeVaults,
+    pendingMilestones,
     completionRate,
   };
 }

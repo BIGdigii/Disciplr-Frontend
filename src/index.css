@@ -132,6 +132,46 @@
   --opacity-backdrop: 0.5;
   --opacity-hover: 0.08;
   --opacity-muted: 0.72;
+
+  /* Chart palette — mirrors design-system/tokens/colors.json color.chart */
+
+  /* Categorical series */
+  --color-chart-categorical-1: #1E40AF;
+  --color-chart-categorical-2: #0D9488;
+  --color-chart-categorical-3: #D97706;
+  --color-chart-categorical-4: #6D28D9;
+  --color-chart-categorical-5: #BE185D;
+
+  /* Sequential ramp */
+  --color-chart-sequential-1: #E0F2FE;
+  --color-chart-sequential-2: #7DD3FC;
+  --color-chart-sequential-3: #0EA5E9;
+  --color-chart-sequential-4: #0369A1;
+  --color-chart-sequential-5: #0C4A6E;
+
+  /* Chart structural tokens */
+  --color-chart-axis: #6B7280;
+  --color-chart-grid: #E5E7EB;
+
+  /* Chart tooltip surface */
+  --color-chart-tooltipBg: #FFFFFF;
+  --color-chart-tooltipBorder: #E5E7EB;
+  --color-chart-tooltipText: #111827;
+  --color-chart-tooltipLabel: #6B7280;
+
+  /* Motion scale — mirrors design-system/tokens/motion.json */
+  --duration-micro: 100ms;
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-moderate: 300ms;
+  --duration-slow: 400ms;
+  --duration-slower: 500ms;
+
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 /* Responsive breakpoints - update CSS variables */
@@ -261,7 +301,8 @@
     --surface-raised: #374151;
     --border: #4b5563;
     --text: #f9fafb;
-    --muted: #9ca3af;
+    /* #D1D5DB on #111827 ≈ 12:1 — AA for normal text at caption sizes (12–14px) */
+    --muted: #d1d5db;
     --accent: #14b8a6;
     --accent-dim: #0d9488;
     --accent-transparent: rgba(20, 184, 166, 0.1);
@@ -289,6 +330,32 @@
     --shadow-level-3: 0px 4px 8px -1px rgba(0, 0, 0, 0.5), 0px 2px 5px -1px rgba(0, 0, 0, 0.3);
     --shadow-level-4: 0px 10px 18px -3px rgba(0, 0, 0, 0.5), 0px 4px 8px -2px rgba(0, 0, 0, 0.3);
     --shadow-level-5: 0px 20px 30px -5px rgba(0, 0, 0, 0.5), 0px 10px 12px -5px rgba(0, 0, 0, 0.3);
+
+    /* Chart palette — dark mode overrides (mirrors colors.json color.chart dark values) */
+
+    /* Categorical series */
+    --color-chart-categorical-1: #3B82F6;
+    --color-chart-categorical-2: #14B8A6;
+    --color-chart-categorical-3: #F59E0B;
+    --color-chart-categorical-4: #8B5CF6;
+    --color-chart-categorical-5: #EC4899;
+
+    /* Sequential ramp */
+    --color-chart-sequential-1: #0C4A6E;
+    --color-chart-sequential-2: #0369A1;
+    --color-chart-sequential-3: #0EA5E9;
+    --color-chart-sequential-4: #7DD3FC;
+    --color-chart-sequential-5: #E0F2FE;
+
+    /* Chart structural tokens */
+    --color-chart-axis: #9CA3AF;
+    --color-chart-grid: #1F2937;
+
+    /* Chart tooltip surface */
+    --color-chart-tooltipBg: #0C101A;
+    --color-chart-tooltipBorder: #1E2D42;
+    --color-chart-tooltipText: #E8EDF5;
+    --color-chart-tooltipLabel: #6B7A8F;
   }
 }
 
@@ -299,7 +366,8 @@
   --surface-raised: #374151;
   --border: #4b5563;
   --text: #f9fafb;
-  --muted: #9ca3af;
+  /* #D1D5DB on #111827 ≈ 12:1 — AA for normal text at caption sizes (12–14px) */
+  --muted: #d1d5db;
   --accent: #14b8a6;
   --accent-dim: #0d9488;
   --accent-transparent: rgba(20, 184, 166, 0.1);
@@ -327,6 +395,32 @@
   --shadow-level-3: 0px 4px 8px -1px rgba(0, 0, 0, 0.5), 0px 2px 5px -1px rgba(0, 0, 0, 0.3);
   --shadow-level-4: 0px 10px 18px -3px rgba(0, 0, 0, 0.5), 0px 4px 8px -2px rgba(0, 0, 0, 0.3);
   --shadow-level-5: 0px 20px 30px -5px rgba(0, 0, 0, 0.5), 0px 10px 12px -5px rgba(0, 0, 0, 0.3);
+
+  /* Chart palette — dark mode overrides (mirrors colors.json color.chart dark values) */
+
+  /* Categorical series */
+  --color-chart-categorical-1: #3B82F6;
+  --color-chart-categorical-2: #14B8A6;
+  --color-chart-categorical-3: #F59E0B;
+  --color-chart-categorical-4: #8B5CF6;
+  --color-chart-categorical-5: #EC4899;
+
+  /* Sequential ramp */
+  --color-chart-sequential-1: #0C4A6E;
+  --color-chart-sequential-2: #0369A1;
+  --color-chart-sequential-3: #0EA5E9;
+  --color-chart-sequential-4: #7DD3FC;
+  --color-chart-sequential-5: #E0F2FE;
+
+  /* Chart structural tokens */
+  --color-chart-axis: #9CA3AF;
+  --color-chart-grid: #1F2937;
+
+  /* Chart tooltip surface */
+  --color-chart-tooltipBg: #0C101A;
+  --color-chart-tooltipBorder: #1E2D42;
+  --color-chart-tooltipText: #E8EDF5;
+  --color-chart-tooltipLabel: #6B7A8F;
 }
 
 /* Manual light theme override (if user selects light) */
@@ -406,6 +500,41 @@ a {
 
 a:hover {
   text-decoration: underline;
+}
+
+.notfound-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3) var(--spacing-6);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: var(--font-size-body);
+  text-decoration: none;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  cursor: pointer;
+}
+
+.notfound-action--primary {
+  background-color: var(--accent);
+  color: white;
+  border: none;
+}
+
+.notfound-action--primary:hover,
+.notfound-action--primary:focus-visible {
+  background-color: var(--accent-dim);
+}
+
+.notfound-action--secondary {
+  background-color: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.notfound-action--secondary:hover,
+.notfound-action--secondary:focus-visible {
+  background-color: var(--hover);
 }
 
 /* ── prefers-reduced-motion ─────────────────────────────────────────────────

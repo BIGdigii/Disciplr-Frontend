@@ -13,6 +13,15 @@
 import type { Vault, VaultTransaction, Milestone } from "../types/vault";
 import { MASTER_VAULTS } from "../fixtures/vaults";
 import { MASTER_ACTIVITY } from "../fixtures/transactions";
+import {
+  isValidVaultRouteId,
+  isVaultAction,
+  lookupVaultSafe,
+  type VaultAction,
+} from "../utils/vaultState";
+import { createSingleFlightRunner } from "../utils/singleFlight";
+
+export { MASTER_VAULTS } from "../fixtures/vaults";
 
 // ── Re-export canonical types for consumers that need them ────────────────────
 export type { Vault, VaultTransaction };
@@ -57,11 +66,13 @@ export async function listVaults(): Promise<Vault[]> {
 /**
  * Return a single vault by id, or undefined if not found.
  * Does NOT throw for unknown ids — callers rely on the undefined branch.
+ * Uses a prototype-safe lookup so hostile ids (e.g. "__proto__") can never
+ * reach inherited object members.
  *
  * SEAM → replace with: Soroban contract state read for a given contract address.
  */
 export async function getVault(id: string): Promise<Vault | undefined> {
-  return MASTER_VAULTS[id];
+  return lookupVaultSafe(MASTER_VAULTS, id);
 }
 
 /**
@@ -71,7 +82,7 @@ export async function getVault(id: string): Promise<Vault | undefined> {
  * SEAM → replace with: Horizon `/transactions?account=<contractAddress>` + filter.
  */
 export async function getTransactions(id: string): Promise<VaultTransaction[]> {
-  return MASTER_VAULTS[id]?.transactions ?? [];
+  return lookupVaultSafe(MASTER_VAULTS, id)?.transactions ?? [];
 }
 
 /**
@@ -109,6 +120,12 @@ export async function createVault(vaultData: {
   failureAddress: string;
   milestones: Omit<Milestone, "id" | "status">[];
 }): Promise<Vault> {
+  if (!vaultData.name || vaultData.name.trim().length === 0) {
+    throw new Error("Vault name is required.");
+  }
+  if (!Number.isFinite(vaultData.amount) || vaultData.amount <= 0) {
+    throw new Error("Vault amount must be a positive finite number.");
+  }
   const nextId = String(Object.keys(MASTER_VAULTS).length + 1);
   const newVault: Vault = {
     id: nextId,
@@ -140,3 +157,37 @@ export async function createVault(vaultData: {
   MASTER_VAULTS[nextId] = newVault;
   return newVault;
 }
+
+/**
+ * Submit a sensitive vault action (validate milestone / extend deadline /
+ * cancel vault).
+ *
+ * Rejects unknown actions and unknown vault ids BEFORE reaching the network.
+ * The operation is single-flight: overlapping calls are coalesced into one
+ * execution so a double-submit (UI replay or hostile script) can never fire
+ * two on-chain transactions from one confirmation.
+ *
+ * SEAM → replace the empty body with the real Soroban invocation; the
+ * single-flight guard must stay around it.
+ */
+const submitVaultActionRunner = createSingleFlightRunner(
+  async (action: VaultAction, vaultId: string): Promise<void> => {
+    if (!isVaultAction(action)) {
+      throw new Error("Unknown vault action.");
+    }
+    if (!isValidVaultRouteId(vaultId) || !lookupVaultSafe(MASTER_VAULTS, vaultId)) {
+      throw new Error("Vault not found.");
+    }
+    if (action === "validate") {
+      const vault = lookupVaultSafe(MASTER_VAULTS, vaultId);
+      if (vault && vault.status !== "active") {
+        throw new Error("Vault is not active.");
+      }
+    }
+    // SEAM: dispatch the contract invocation for `action` here.
+    return;
+  },
+);
+
+export const submitVaultAction = submitVaultActionRunner.run;
+export const isVaultActionPending = submitVaultActionRunner.isPending;

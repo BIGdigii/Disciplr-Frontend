@@ -223,4 +223,62 @@ describe('EvidenceUpload', () => {
       expect(handleFileSelect).not.toHaveBeenCalled()
     })
   })
+
+  describe('file size validation', () => {
+    it('accepts a file within the default 50 MB limit', () => {
+      const handleFileSelect = vi.fn()
+      render(<EvidenceUpload onFileSelect={handleFileSelect} />)
+
+      const dropZone = screen.getByTestId('evidence-drop-zone')
+      // 1 MB file — well within the 50 MB default
+      const smallFile = new File([new ArrayBuffer(1024 * 1024)], 'proof.pdf', { type: 'application/pdf' })
+      fireEvent.drop(dropZone, { dataTransfer: { files: [smallFile] } })
+
+      expect(handleFileSelect).toHaveBeenCalledWith(smallFile)
+      expect(screen.queryByTestId('drag-error')).not.toBeInTheDocument()
+    })
+
+    it('rejects a file that exceeds the default 50 MB limit', () => {
+      const handleFileSelect = vi.fn()
+      render(<EvidenceUpload onFileSelect={handleFileSelect} />)
+
+      const dropZone = screen.getByTestId('evidence-drop-zone')
+      // Simulate a 60 MB file by overriding the size property
+      const bigFile = Object.defineProperty(
+        new File(['x'], 'huge-video.mp4', { type: 'video/mp4' }),
+        'size',
+        { value: 60 * 1024 * 1024 }
+      )
+      fireEvent.drop(dropZone, { dataTransfer: { files: [bigFile] } })
+
+      expect(handleFileSelect).not.toHaveBeenCalled()
+      expect(screen.getByTestId('drag-error')).toBeInTheDocument()
+      expect(screen.getByText(/File is too large/)).toBeInTheDocument()
+      expect(screen.getByText(/Maximum allowed size is 50 MB/)).toBeInTheDocument()
+    })
+
+    it('respects a custom maxFileSizeBytes prop', () => {
+      const handleFileSelect = vi.fn()
+      render(<EvidenceUpload onFileSelect={handleFileSelect} maxFileSizeBytes={1024} />)
+
+      const dropZone = screen.getByTestId('evidence-drop-zone')
+      // 2 KB file — exceeds the custom 1 KB limit
+      const tooBig = Object.defineProperty(
+        new File(['x'], 'proof.pdf', { type: 'application/pdf' }),
+        'size',
+        { value: 2048 }
+      )
+      fireEvent.drop(dropZone, { dataTransfer: { files: [tooBig] } })
+
+      expect(handleFileSelect).not.toHaveBeenCalled()
+      expect(screen.getByTestId('drag-error')).toBeInTheDocument()
+      expect(screen.getByText(/File is too large/)).toBeInTheDocument()
+    })
+
+    it('shows the max file size in the drop zone hint', () => {
+      render(<EvidenceUpload maxFileSizeBytes={10 * 1024 * 1024} />)
+      expect(screen.getByText(/Max size: 10 MB/)).toBeInTheDocument()
+    })
+  })
+
 })

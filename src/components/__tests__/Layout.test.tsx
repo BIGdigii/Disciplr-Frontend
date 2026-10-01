@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 import Layout from '../Layout';
+import { ThemeProvider } from '../../context/ThemeContext';
 
 vi.mock('../Wallet/WalletConnectButton', () => ({
   WalletConnectButton: () => <button type="button">Connect wallet</button>,
@@ -17,13 +18,14 @@ vi.mock('focus-trap-react', () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
-function renderLayout(path: string) {
+// Layout renders <ThemeToggle />, which requires ThemeProvider context.
+function renderLayout(path: string, content: ReactNode = <div>Page content</div>) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Layout>
-        <div>Page content</div>
-      </Layout>
-    </MemoryRouter>,
+    <ThemeProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <Layout>{content}</Layout>
+      </MemoryRouter>
+    </ThemeProvider>,
   );
 }
 
@@ -46,52 +48,28 @@ describe('Layout component navigation', () => {
   });
 
   test('verifier link receives active class and aria-current when on /verifier', () => {
-    render(
-      <MemoryRouter initialEntries={['/verifier']}>
-        <Layout>
-          <div>Content</div>
-        </Layout>
-      </MemoryRouter>
-    );
+    renderLayout('/verifier');
     const link = screen.getByRole('link', { name: /verifier/i });
     expect(link).toHaveAttribute('aria-current', 'page');
     expect(link).toHaveClass('active');
   });
 
   test('verifier link is active on verifier subroutes', () => {
-    render(
-      <MemoryRouter initialEntries={['/verifier/queue']}>
-        <Layout>
-          <div>Content</div>
-        </Layout>
-      </MemoryRouter>
-    );
+    renderLayout('/verifier/queue');
     const link = screen.getByRole('link', { name: /verifier/i });
     expect(link).toHaveAttribute('aria-current', 'page');
     expect(link).toHaveClass('active');
   });
 
   test('analytics link receives active class and aria-current when on /analytics', () => {
-    render(
-      <MemoryRouter initialEntries={['/analytics']}>
-        <Layout>
-          <div>Content</div>
-        </Layout>
-      </MemoryRouter>
-    );
+    renderLayout('/analytics');
     const link = screen.getByRole('link', { name: /analytics/i });
     expect(link).toHaveAttribute('aria-current', 'page');
     expect(link).toHaveClass('active');
   });
 
   test('verifier and analytics links are not active on home route', () => {
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <Layout>
-          <div>Content</div>
-        </Layout>
-      </MemoryRouter>
-    );
+    renderLayout('/');
     const verifierLink = screen.getByRole('link', { name: /verifier/i });
     expect(verifierLink).not.toHaveAttribute('aria-current');
     expect(verifierLink).not.toHaveClass('active');
@@ -102,13 +80,7 @@ describe('Layout component navigation', () => {
   });
 
   test('header links share the common focusable classes for keyboard users', () => {
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <Layout>
-          <div>Content</div>
-        </Layout>
-      </MemoryRouter>
-    );
+    renderLayout('/');
 
     const homeLink = screen.getByRole('link', { name: /^home$/i });
     const analyticsLink = screen.getByRole('link', { name: /^analytics$/i });
@@ -146,10 +118,9 @@ describe('Layout header landmarks', () => {
     expect(screen.getByRole('main')).toBeInTheDocument();
   });
 
-  test('mounts the global network mismatch banner', () => {
-    renderLayout('/');
-    expect(screen.getByTestId('network-mismatch-banner')).toBeInTheDocument();
-  });
+  // Note: NetworkMismatchBanner is not currently mounted anywhere in the app
+  // (it has no consumer outside its own test file), so there is no "global
+  // network mismatch banner" behavior on Layout to assert here.
 });
 
 // ---------------------------------------------------------------------------
@@ -306,13 +277,7 @@ describe('Layout nav aria-current per route', () => {
     const routes = ['/', '/analytics', '/transactions', '/vaults/create'];
 
     routes.forEach((path) => {
-      const { unmount } = render(
-        <MemoryRouter initialEntries={[path]}>
-          <Layout>
-            <div />
-          </Layout>
-        </MemoryRouter>,
-      );
+      const { unmount } = renderLayout(path, <div />);
 
       const activeLinks = screen
         .getAllByRole('link')
@@ -375,5 +340,400 @@ describe('Layout mobile nav controls', () => {
     expect(brandRegion).not.toHaveAttribute('inert');
     expect(main).not.toHaveAttribute('aria-hidden');
     expect(main).not.toHaveAttribute('inert');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Drawer state machine integration — recovery on route change and resize
+// ---------------------------------------------------------------------------
+function NavigateButton({ targetPath }: { targetPath: string }) {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(targetPath)}>
+      Navigate
+    </button>
+  );
+}
+
+function LayoutNavigationHarness({ targetPath = '/dashboard' }: { targetPath?: string }) {
+  return (
+    <ThemeProvider>
+      <MemoryRouter initialEntries={['/']}>
+        <NavigateButton targetPath={targetPath} />
+        <Layout>
+          <div>Page content</div>
+        </Layout>
+      </MemoryRouter>
+    </ThemeProvider>
+  );
+}
+
+type MediaQueryListener = (event: { matches: boolean; media: string }) => void;
+
+function createMatchMediaMock() {
+  const listenersByQuery = new Map<string, Set<MediaQueryListener>>();
+  let desktop = false;
+
+  return {
+    setDesktop(next: boolean) {
+      desktop = next;
+      listenersByQuery.forEach((listeners, query) => {
+        listeners.forEach((listener) => listener({ matches: next, media: query }));
+      });
+    },
+    install() {
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: query.includes('min-width: 768px') ? desktop : false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: (_event: string, listener: MediaQueryListener) => {
+          if (!listenersByQuery.has(query)) {
+            listenersByQuery.set(query, new Set());
+          }
+          listenersByQuery.get(query)!.add(listener);
+        },
+        removeEventListener: (_event: string, listener: MediaQueryListener) => {
+          listenersByQuery.get(query)?.delete(listener);
+        },
+        dispatchEvent: vi.fn(),
+      }));
+    },
+  };
+}
+
+describe('Layout drawer state machine integration', () => {
+  beforeEach(() => {
+    document.body.style.overflow = '';
+  });
+
+  test('closes the drawer when navigating to a new route (deep-link / back recovery)', async () => {
+    render(<LayoutNavigationHarness />);
+    const hamburger = screen.getByRole('button', { name: /open navigation menu/i });
+
+    fireEvent.click(hamburger);
+    expect(hamburger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('dialog', { name: /navigation/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^navigate$/i }));
+
+    await waitFor(() => expect(hamburger).toHaveAttribute('aria-expanded', 'false'));
+    expect(screen.queryByRole('dialog', { name: /navigation/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('main')).not.toHaveAttribute('aria-hidden');
+    expect(document.body.style.overflow).toBe('');
+  });
+
+  test('navigating to the same route does not close a freshly opened drawer (stale-route guard)', () => {
+    render(<LayoutNavigationHarness targetPath="/" />);
+    const hamburger = screen.getByRole('button', { name: /open navigation menu/i });
+
+    fireEvent.click(hamburger);
+    expect(hamburger).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: /^navigate$/i }));
+
+    expect(hamburger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('dialog', { name: /navigation/i })).toBeInTheDocument();
+  });
+
+  test('rapid hamburger clicks keep aria-expanded consistent with the rendered drawer', async () => {
+    renderLayout('/');
+    const hamburger = screen.getByRole('button', { name: /open navigation menu/i });
+
+    fireEvent.click(hamburger);
+    fireEvent.click(hamburger);
+
+    await waitFor(() => expect(hamburger).toHaveAttribute('aria-expanded', 'false'));
+    expect(screen.queryByRole('dialog', { name: /navigation/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('main')).not.toHaveAttribute('aria-hidden');
+
+    fireEvent.click(hamburger);
+
+    await waitFor(() => expect(hamburger).toHaveAttribute('aria-expanded', 'true'));
+    expect(screen.getByRole('dialog', { name: /navigation/i })).toBeInTheDocument();
+    expect(screen.getByRole('main', { hidden: true })).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  test('closing the drawer with Escape releases scroll lock and restores focus', async () => {
+    renderLayout('/');
+    const hamburger = screen.getByRole('button', { name: /open navigation menu/i });
+
+    hamburger.focus();
+    fireEvent.click(hamburger);
+    expect(document.body.style.overflow).toBe('hidden');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() => expect(hamburger).toHaveAttribute('aria-expanded', 'false'));
+    expect(screen.queryByRole('dialog', { name: /navigation/i })).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe('');
+    expect(hamburger).toHaveFocus();
+  });
+
+  test('closes the drawer when the viewport crosses into the desktop breakpoint', async () => {
+    const originalMatchMedia = window.matchMedia;
+    const mediaQuery = createMatchMediaMock();
+    mediaQuery.install();
+
+    try {
+      renderLayout('/');
+      const hamburger = screen.getByRole('button', { name: /open navigation menu/i });
+
+      fireEvent.click(hamburger);
+      expect(hamburger).toHaveAttribute('aria-expanded', 'true');
+      expect(document.body.style.overflow).toBe('hidden');
+
+      act(() => mediaQuery.setDesktop(true));
+
+      await waitFor(() => expect(hamburger).toHaveAttribute('aria-expanded', 'false'));
+      expect(screen.queryByRole('dialog', { name: /navigation/i })).not.toBeInTheDocument();
+      expect(document.body.style.overflow).toBe('');
+      expect(screen.getByRole('main')).not.toHaveAttribute('aria-hidden');
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Failure-path and boundary coverage
+// ---------------------------------------------------------------------------
+describe('Layout failure-path and boundary coverage', () => {
+  beforeEach(() => {
+    document.body.style.overflow = '';
+  });
+
+  test('renders without crashing when children is null', () => {
+    renderLayout('/', null);
+    expect(screen.getByRole('main')).toBeInTheDocument();
+    expect(screen.getByRole('banner')).toBeInTheDocument();
+  });
+
+  test('renders without crashing when children is undefined', () => {
+    renderLayout('/', undefined);
+    expect(screen.getByRole('main')).toBeInTheDocument();
+  });
+
+  test('renders without crashing when children is an empty fragment', () => {
+    renderLayout('/', <></>);
+    expect(screen.getByRole('main')).toBeInTheDocument();
+  });
+
+  test('renders multiple children without dropping any', () => {
+    renderLayout(
+      '/',
+      <>
+        <span data-testid="child-a">A</span>
+        <span data-testid="child-b">B</span>
+      </>,
+    );
+    expect(screen.getByTestId('child-a')).toBeInTheDocument();
+    expect(screen.getByTestId('child-b')).toBeInTheDocument();
+  });
+
+  test('renders correctly on a deeply nested unknown route without active links', () => {
+    renderLayout('/a/b/c/d/e/f');
+    const activeLinks = screen
+      .getAllByRole('link')
+      .filter((link) => link.getAttribute('aria-current') === 'page');
+    expect(activeLinks).toHaveLength(0);
+    expect(screen.getByRole('main')).toBeInTheDocument();
+  });
+
+  test('renders correctly on a route with trailing slash', () => {
+    renderLayout('/transactions/');
+    const link = screen.getByRole('link', { name: /^transactions$/i });
+    // Trailing slash should still resolve to the transactions route.
+    expect(link).toHaveAttribute('href', '/transactions');
+  });
+
+  test('renders correctly on a route with query string and hash', () => {
+    renderLayout('/analytics?tab=overview#section');
+    const link = screen.getByRole('link', { name: /^analytics$/i });
+    expect(link).toHaveAttribute('aria-current', 'page');
+  });
+
+  test('renders correctly on a route with URL-encoded segments', () => {
+    renderLayout('/vaults/create%20vault');
+    expect(screen.getByRole('main')).toBeInTheDocument();
+    expect(screen.getByRole('banner')).toBeInTheDocument();
+  });
+
+  test('repeated open/close cycles do not leak scroll lock', async () => {
+    renderLayout('/');
+    const hamburger = screen.getByRole('button', { name: /open navigation menu/i });
+
+    for (let i = 0; i < 5; i += 1) {
+      fireEvent.click(hamburger);
+      await waitFor(() => expect(hamburger).toHaveAttribute('aria-expanded', 'true'));
+      expect(document.body.style.overflow).toBe('hidden');
+
+      fireEvent.click(hamburger);
+      await waitFor(() => expect(hamburger).toHaveAttribute('aria-expanded', 'false'));
+      expect(document.body.style.overflow).toBe('');
+    }
+  });
+
+  test('unmounting while drawer is open releases scroll lock', () => {
+    const { unmount } = renderLayout('/');
+    const hamburger = screen.getByRole('button', { name: /open navigation menu/i });
+
+    fireEvent.click(hamburger);
+    expect(document.body.style.overflow).toBe('hidden');
+
+    unmount();
+
+    expect(document.body.style.overflow).toBe('');
+  });
+
+  test('Escape key when drawer is already closed is a no-op', () => {
+    renderLayout('/');
+    const hamburger = screen.getByRole('button', { name: /open navigation menu/i });
+
+    expect(hamburger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(hamburger).toHaveAttribute('aria-expanded', 'false');
+    expect(document.body.style.overflow).toBe('');
+  });
+
+  test('Escape key with unrelated keys does not close the drawer', () => {
+    renderLayout('/');
+    const hamburger = screen.getByRole('button', { name: /open navigation menu/i });
+
+    fireEvent.click(hamburger);
+    expect(hamburger).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(document, { key: 'Tab' });
+    fireEvent.keyDown(document, { key: 'a' });
+    fireEvent.keyDown(document, { key: 'Enter' });
+
+    expect(hamburger).toHaveAttribute('aria-expanded', 'true');
+    expect(document.body.style.overflow).toBe('hidden');
+  });
+
+  test('drawer state is idempotent across repeated Escape presses', async () => {
+    renderLayout('/');
+    const hamburger = screen.getByRole('button', { name: /open navigation menu/i });
+
+    fireEvent.click(hamburger);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() => expect(hamburger).toHaveAttribute('aria-expanded', 'false'));
+    expect(document.body.style.overflow).toBe('');
+    expect(screen.queryByRole('dialog', { name: /navigation/i })).not.toBeInTheDocument();
+  });
+
+  test('resize to desktop while drawer closed is a no-op', async () => {
+    const originalMatchMedia = window.matchMedia;
+    const mediaQuery = createMatchMediaMock();
+    mediaQuery.install();
+
+    try {
+      renderLayout('/');
+      const hamburger = screen.getByRole('button', { name: /open navigation menu/i });
+
+      expect(hamburger).toHaveAttribute('aria-expanded', 'false');
+      act(() => mediaQuery.setDesktop(true));
+
+      await waitFor(() => expect(hamburger).toHaveAttribute('aria-expanded', 'false'));
+      expect(document.body.style.overflow).toBe('');
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
+  test('resize back to mobile after desktop does not auto-open the drawer', async () => {
+    const originalMatchMedia = window.matchMedia;
+    const mediaQuery = createMatchMediaMock();
+    mediaQuery.install();
+
+    try {
+      renderLayout('/');
+      const hamburger = screen.getByRole('button', { name: /open navigation menu/i });
+
+      act(() => mediaQuery.setDesktop(true));
+      act(() => mediaQuery.setDesktop(false));
+
+      await waitFor(() => expect(hamburger).toHaveAttribute('aria-expanded', 'false'));
+      expect(screen.queryByRole('dialog', { name: /navigation/i })).not.toBeInTheDocument();
+      expect(document.body.style.overflow).toBe('');
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
+  test('navigating away while drawer is open does not leave background inert', async () => {
+    render(<LayoutNavigationHarness />);
+    const hamburger = screen.getByRole('button', { name: /open navigation menu/i });
+
+    fireEvent.click(hamburger);
+    expect(screen.getByRole('main', { hidden: true })).toHaveAttribute('inert', '');
+
+    fireEvent.click(screen.getByRole('button', { name: /^navigate$/i }));
+
+    await waitFor(() => expect(hamburger).toHaveAttribute('aria-expanded', 'false'));
+    expect(screen.getByRole('main')).not.toHaveAttribute('inert');
+    expect(screen.getByRole('main')).not.toHaveAttribute('aria-hidden');
+  });
+
+  test('concurrent navigation and Escape do not produce inconsistent state', async () => {
+    render(<LayoutNavigationHarness />);
+    const hamburger = screen.getByRole('button', { name: /open navigation menu/i });
+
+    fireEvent.click(hamburger);
+    expect(hamburger).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: /^navigate$/i }));
+
+    await waitFor(() => expect(hamburger).toHaveAttribute('aria-expanded', 'false'));
+    expect(screen.queryByRole('dialog', { name: /navigation/i })).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe('');
+    expect(screen.getByRole('main')).not.toHaveAttribute('aria-hidden');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #1263 — Transactions icon must not carry an inline display:none
+// The show/hide logic lives entirely in Layout.css (media-query driven).
+// An inline style would always win the cascade and prevent the CSS rule from
+// ever revealing the icon at the intended breakpoint.
+// ---------------------------------------------------------------------------
+describe('Layout transactions icon — no inline style override (issue #1263)', () => {
+  test('the header-transactions-icon span has no inline style attribute', () => {
+    const { container } = renderLayout('/');
+    const iconSpan = container.querySelector('.header-transactions-icon');
+    expect(iconSpan).toBeInTheDocument();
+    // The span must carry zero inline style declarations so that Layout.css's
+    // media-query rule at min-width: 400px can take effect unobstructed.
+    expect(iconSpan).not.toHaveAttribute('style');
+  });
+
+  test('the header-transactions-icon span does not carry an inline display value', () => {
+    const { container } = renderLayout('/');
+    const iconSpan = container.querySelector('.header-transactions-icon') as HTMLElement | null;
+    expect(iconSpan).toBeInTheDocument();
+    // Confirms no programmatic style.display has been applied — the span's
+    // visibility is governed by CSS class + media query only.
+    expect(iconSpan?.style.display).toBe('');
+  });
+
+  test('the header-transactions-label span also has no inline style attribute', () => {
+    const { container } = renderLayout('/');
+    const labelSpan = container.querySelector('.header-transactions-label');
+    expect(labelSpan).toBeInTheDocument();
+    expect(labelSpan).not.toHaveAttribute('style');
+  });
+
+  test('both icon and label spans are present in the DOM (CSS-only toggle, not conditional render)', () => {
+    const { container } = renderLayout('/');
+    // Both elements must exist so the CSS media-query can switch between them.
+    // If either were conditionally removed from the DOM, the breakpoint toggle
+    // would be impossible.
+    expect(container.querySelector('.header-transactions-icon')).toBeInTheDocument();
+    expect(container.querySelector('.header-transactions-label')).toBeInTheDocument();
   });
 });

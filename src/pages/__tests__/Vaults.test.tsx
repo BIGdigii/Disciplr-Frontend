@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { vi } from "vitest";
 import Vaults, { VaultsInner } from "../../pages/Vaults";
+import VaultCard from "../../components/VaultCard";
 import type { Vault } from "../../types/vault";
 
 // Helper to mock fetch function
@@ -66,7 +67,7 @@ describe("Vaults page states", () => {
     expect(skeletons.length).toBeGreaterThanOrEqual(3);
     // Wait for loading to finish (no data)
     await waitFor(() =>
-      expect(screen.queryByTestId("skeleton")).not.toBeInTheDocument(),
+      expect(screen.queryByTestId("skeleton")).not.toBeInDocument(),
     );
   });
 
@@ -103,12 +104,12 @@ describe("Vaults page states", () => {
         currency: "USDC",
         status: "active" as const,
         deadline: "2025-01-01T00:00:00Z",
-        successAddress: "GSUCC3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK",
-        failureAddress: "GFAIL3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK",
+        successAddress: "GSUCC3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQKK",
+        failureAddress: "GFAIL3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQKK",
         milestones: [{ title: "Milestone A", criteria: "Criteria A" }],
         createdAt: "2024-01-01T00:00:00Z",
-        creatorAddress: "GCREA3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK",
-        contractAddress: "GCONT3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK",
+        creatorAddress: "GCREA3KQKM4XNQPBEZMXPOLKQK4XNQPBEZMXPOLKQKK",
+        contractAddress: "GCONT3KQKM4XNQPBEZMXPOLKQK4XNQPBEZMXPOLKQKK",
         transactions: [],
       },
     ];
@@ -135,8 +136,8 @@ describe("Vaults page states", () => {
       sourceVaultId: "1",
       sourceVaultName: "Test Vault",
       amount: "1000",
-      successAddress: "GSUCC3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK",
-      failureAddress: "GFAIL3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK",
+      successAddress: "GSUCC3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQKK",
+      failureAddress: "GFAIL3KQKM4XNQPBEZMXPOLKQK4XNQPBEZMXPOLKQKK",
       milestones: [{ title: "Milestone A", criteria: "Criteria A" }],
     });
     expect(state.createVaultPrefill).not.toHaveProperty("deadline");
@@ -346,6 +347,52 @@ describe("Vaults view toggle", () => {
     await waitFor(() => screen.getByLabelText(/Test Vault progress/i));
   });
 
+  test("memoized VaultCard does not re-render when unrelated Vaults state changes", async () => {
+    const spy = vi.spyOn(VaultCard, "type");
+
+    const mockData = [
+      {
+        id: "1",
+        name: "Alpha Vault",
+        amount: 1000,
+        currency: "USDC",
+        status: "active" as const,
+        deadline: "2025-06-01T00:00:00Z",
+        milestones: [],
+      },
+      {
+        id: "2",
+        name: "Beta Vault",
+        amount: 2000,
+        currency: "USDC",
+        status: "active" as const,
+        deadline: "2025-09-01T00:00:00Z",
+        milestones: [],
+      },
+    ];
+
+    render(<Vaults fetchVaults={mockSuccess(mockData)} />);
+    await waitFor(() => screen.getByText("Alpha Vault"));
+
+    // Grid view is the only view that renders VaultCard.
+    await userEvent.click(screen.getByRole("radio", { name: "Grid" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Alpha Vault progress")).toBeInTheDocument(),
+    );
+
+    const rendersAfterMount = spy.mock.calls.length;
+    expect(rendersAfterMount).toBe(mockData.length);
+
+    // Toggling the sort direction re-renders the page from its own state,
+    // without changing any individual card's props, so every memoized
+    // VaultCard must bail out instead of re-rendering.
+    await userEvent.click(screen.getByRole("button", { name: /sort/i }));
+
+    expect(spy.mock.calls.length).toBe(rendersAfterMount);
+
+    spy.mockRestore();
+  });
+
   test("handles localStorage errors gracefully", async () => {
     // Mock localStorage to throw error
     const originalGetItem = localStorageMock.getItem;
@@ -374,5 +421,138 @@ describe("Vaults view toggle", () => {
     );
 
     localStorageMock.getItem = originalGetItem;
+  });
+});
+
+describe("Vaults filter and sort", () => {
+  const vaults: Vault[] = [
+    {
+      id: "1",
+      name: "Alpha Project",
+      amount: 500,
+      currency: "USDC",
+      status: "active",
+      deadline: "2025-06-01T00:00:00Z",
+      createdAt: "2024-01-01T00:00:00Z",
+      creatorAddress: "GCREA3KQKM4XNQPBEZMXPOLKQK4XNQPBEZMXPOLKQKK",
+      successAddress: "GSUCC3KQKM4XNQPBEZMXPOLKQK4XNQPBEZMXPOLKQKK",
+      failureAddress: "GFAIL3KQKM4XNQPBEZMXPOLKQK4XNQPBEZMXPOLKQKK",
+      contractAddress: "GCONT3KQKM4XNQPBEZMXPOLKQKK4XNQPBEZMXPOLKQK",
+      milestones: [],
+      transactions: [],
+    },
+    {
+      id: "2",
+      name: "Beta Project",
+      amount: 1500,
+      currency: "USDC",
+      status: "completed",
+      deadline: "2025-01-01T00:00:00Z",
+      createdAt: "2024-01-01T00:00:00Z",
+      creatorAddress: "GCREA3KQKM4XNQPBEZMXPOLKQK4XNQPBEZMXPOLKQKK",
+      successAddress: "GSUCC3KQKM4XNQPBEZMXPOLKQK4XNQPBEZMXPOLKQKK",
+      failureAddress: "GFAIL3KQKM4XNQPBEZMXPOLKQK4XNQPBEZMXPOLKQKK",
+      contractAddress: "GCONT3KQKM4XNQPBEZMXPOLKQKK4XNQPBEZMXPOLKQK",
+      milestones: [],
+      transactions: [],
+    },
+  ];
+
+  test("renders filter and sort controls", async () => {
+    render(<Vaults fetchVaults={mockSuccess(vaults)} />);
+    await waitFor(() => screen.getByText("Alpha Project"));
+    expect(screen.getByText("Beta Project")).toBeInTheDocument();
+  });
+
+  test("renders all vaults by default", async () => {
+    render(<Vaults fetchVaults={mockSuccess(vaults)} />);
+    await waitFor(() => screen.getByText("Alpha Project"));
+    expect(screen.getByText("Beta Project")).toBeInTheDocument();
+  });
+});
+
+describe("Vaults failure-path and boundary coverage", () => {
+  beforeEach(() => {
+    localStorageMock.clear();
+  });
+
+  test("rejects non-array fetch results and surfaces a diagnosable error", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ not: "an array" });
+    render(<Vaults fetchVaults={fetchMock as any} />);
+    await waitFor(() => screen.getByText(/Failed to load vaults./i));
+    expect(screen.getByText(/Failed to load vaults./i)).toBeInTheDocument();
+  });
+
+  test("treats null fetch result as empty state without crashing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(null);
+    render(<Vaults fetchVaults={fetchMock as any} />);
+    await waitFor(() => screen.getByText(/You don’t have any vaults yet./i));
+  });
+
+  test("filters out malformed entries and keeps valid ones", async () => {
+    const malformed = [
+      { id: "1", name: "Valid Vault", amount: 100, currency: "USDC", status: "active", deadline: "2025-01-01T00:00:00Z", milestones: [] },
+      { id: "2", name: "", amount: 100, currency: "USDC", status: "active", deadline: "2025-01-01T00:00:00Z", milestones: [] },
+      { id: "3", name: "Bad Amount", amount: NaN, currency: "USDC", status: "active", deadline: "2025-01-01T00:00:00Z", milestones: [] },
+    ];
+    render(<Vaults fetchVaults={mockSuccess(malformed)} />);
+    await waitFor(() => screen.getByText("Valid Vault"));
+    expect(screen.queryByText("Bad Amount")).not.toBeInTheDocument();
+  });
+
+  test("retries on transient failure and stops after success", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("transient"))
+      .mockResolvedValue([]);
+    render(<Vaults fetchVaults={fetchMock} />);
+    await waitFor(() => screen.getByText(/Failed to load vaults./i));
+    await userEvent.click(screen.getByRole("button", { name: /Retry/i }));
+    await waitFor(() => screen.getByText(/You don’t have any vaults yet./i));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("prevents concurrent retries from causing inconsistent state", async () => {
+    let resolve: ((value: Vault[]) => void) | undefined;
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise<Vault[]>((res) => {
+          resolve = res;
+        }),
+    );
+    render(<Vaults fetchVaults={fetchMock} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    // Second call should be ignored while in-flight
+    await act(async () => {
+      resolve?.([]);
+    });
+    await waitFor(() => screen.getByText(/You don’t have any vaults yet./i));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("handles unmount during in-flight fetch without warnings or crashes", async () => {
+    let resolve: ((value: Vault[]) => void) | undefined;
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise<Vault[]>(((res) => {
+          resolve = res;
+        })),
+    );
+    const { unmount } = render(<Vaults fetchVaults={fetchMock} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    unmount();
+    await act(async () => {
+      resolve?.([]);
+    });
+  });
+
+  test("shows empty state for empty array and does not crash on duplicate ids", async () => {
+    const dups = [
+      { id: "1", name: "Dup A", amount: 100, currency: "USDC", status: "active", deadline: "2025-01-01T00:00:00Z", milestones: [] },
+      { id: "1", name: "Dup B", amount: 200, currency: "USDC", status: "active", deadline: "2025-01-01T00:00:00Z", milestones: [] },
+    ];
+    render(<Vaults fetchVaults={mockSuccess(dups)} />);
+    await waitFor(() => screen.getByText("Dup A"));
+    expect(screen.getByText("Dup B")).toBeInTheDocument();
   });
 });

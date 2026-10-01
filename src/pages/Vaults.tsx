@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, MemoryRouter, useInRouterContext } from "react-router-dom";
 import { StatusChip } from "../components/StatusChip";
 import { Text } from "../components/Text";
 import VaultCard from "../components/VaultCard";
+import { VaultFilterBar } from "../components/VaultFilterBar";
 import { listVaults } from "../services/vaultService";
 import type { Vault } from "../types/vault";
 import { createVaultPrefillFromVault } from "../utils/vaultPrefill";
 import { filterVaults, sortVaults } from "../utils/vaultFilter";
-import type { VaultStatus } from "../types/vault";
-import type { VaultSortOptions } from "../utils/vaultFilter";
+import type { VaultFilters, VaultSortOptions } from "../utils/vaultFilter";
 
 const STORAGE_KEY = "vaults-view-preference";
 const DEFAULT_VIEW: "list" | "grid" = "list";
@@ -21,6 +21,43 @@ function getViewPreference(): "list" | "grid" {
     // localStorage may be disabled
   }
   return DEFAULT_VIEW;
+}
+
+const VALID_SORT_BY: ReadonlyArray<VaultSortOptions["by"]> = [
+  "deadline",
+  "amount",
+];
+const VALID_SORT_DIR: ReadonlyArray<VaultSortOptions["dir"]> = ["asc", "desc"];
+
+/**
+ * Invariant: only well-formed vaults are rendered. Malformed entries from the
+ * service layer (missing id/name, non-finite amount, invalid deadline, unknown
+ * status) are dropped rather than allowed to produce inconsistent UI state.
+ */
+function isValidVault(value: unknown): value is Vault {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  if (typeof v.id !== "string" || v.id.length === 0) return false;
+  if (typeof v.name !== "string" || v.name.length === 0) return false;
+  if (typeof v.amount !== "number" || !Number.isFinite(v.amount)) return false;
+  if (typeof v.currency !== "string" || v.currency.length === 0) return false;
+  if (typeof v.deadline !== "string") return false;
+  const deadlineMs = Date.parse(v.deadline);
+  if (Number.isNaN(deadlineMs)) return false;
+  if (typeof v.status !== "string" || v.status.length === 0) return false;
+  if (v.milestones !== undefined) {
+    if (!Array.isArray(v.milestones)) return false;
+    for (const m of v.milestones) {
+      if (!m || typeof m !== "object") return false;
+      if (typeof (m as { status?: unknown }).status !== "string") return false;
+    }
+  }
+  return true;
+}
+
+function sanitizeVaults(input: unknown): Vault[] {
+  if (!Array.isArray(input)) return [];
+  return input.filter(isValidVault);
 }
 
 function setViewPreference(view: "list" | "grid") {
@@ -36,7 +73,11 @@ function calculateProgressPct(vault: Vault): number {
   const validated = vault.milestones.filter(
     (m) => m.status === "validated",
   ).length;
-  return Math.round((validated / vault.milestones.length) * 100);
+  const pct = Math.round((validated / vault.milestones.length) * 100);
+  // Clamp to [0, 100] so unexpected milestone shapes cannot render an
+  // out-of-range progress value.
+  if (!Number.isFinite(pct)) return 0;
+  return Math.max(0, Math.min(100, pct));
 }
 
 const DEFAULT_FETCH = () => listVaults();
@@ -47,9 +88,9 @@ function Skeleton() {
       data-testid="skeleton"
       style={{
         height: 72,
-        background: "var(--surface, #1e293b)",
-        border: "1px solid var(--border, #334155)",
-        borderRadius: "var(--radius, 8px)",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius)",
         animation: "pulse 1.5s ease-in-out infinite",
       }}
     />
@@ -60,6 +101,8 @@ interface VaultsInnerProps {
   fetchVaults?: () => Promise<Vault[]>;
 }
 
+const MAX_RETRIES = 5;
+
 export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
   const [vaults, setVaults] = useState<Vault[]>([]);
   const [status, setStatus] = useState<"loading" | "empty" | "data" | "error">(
@@ -68,13 +111,13 @@ export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
   const [retryCount, setRetryCount] = useState(0);
   const [viewMode, setViewMode] = useState<"list" | "grid">(getViewPreference);
 
-  // Filtering and sorting state (keeping defaults)
-  const [statusFilter] = useState<VaultStatus | "all">("all");
-  const [searchQuery] = useState("");
-  const [sortOptions] = useState<VaultSortOptions>({
+  const [filters, setFilters] = useState<VaultFilters>({ status: "all", query: "" });
+  const [sortOptions, setSortOptions] = useState<VaultSortOptions>({
     by: "deadline",
     dir: "asc",
   });
+  // Monotonic request id: only the latest in-flight fetch may commit state.
+  const requestIdRef = useRef(0);
 
   // Use a ref so changing the fetchVaults prop identity doesn't re-trigger the effect
   const fetchRef = useRef(fetchVaults);
@@ -82,35 +125,66 @@ export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
 
   useEffect(() => {
     let cancelled = false;
+    const requestId = ++requestIdRef.current;
     setStatus("loading");
-    fetchRef
-      .current()
+    Promise.resolve()
+      .then(() => fetchRef.current())
       .then((data) => {
-        if (cancelled) return;
-        setVaults(data);
-        setStatus(data.length === 0 ? "empty" : "data");
+        // Ignore stale responses from superseded requests and unmounted trees.
+        if (cancelled || requestId !== requestIdRef.current) return;
+        // A present but non-array payload is a malformed response: surface it
+        // as an error instead of an empty list. null/undefined degrade to empty.
+        if (data != null && !Array.isArray(data)) {
+          setVaults([]);
+          setStatus("error");
+          return;
+        }
+        const safe = sanitizeVaults(data);
+        setVaults(safe);
+        setStatus(safe.length === 0 ? "empty" : "data");
       })
       .catch(() => {
-        if (!cancelled) setStatus("error");
+        if (cancelled || requestId !== requestIdRef.current) return;
+        setStatus("error");
       });
     return () => {
       cancelled = true;
     };
   }, [retryCount]); // only re-run on explicit retry
 
-  const retry = useCallback(() => setRetryCount((c) => c + 1), []);
+  const retry = useCallback(() => {
+    // Clear stale data so a failed retry cannot leave the previous dataset
+    // visible alongside an error state.
+    setVaults([]);
+    setRetryCount((c) => (c >= MAX_RETRIES ? c : c + 1));
+  }, []);
 
   const handleViewChange = useCallback((newView: "list" | "grid") => {
     setViewMode(newView);
     setViewPreference(newView);
   }, []);
 
-  // Apply filters and sorting
-  const filteredVaults = filterVaults(vaults, {
-    status: statusFilter,
-    query: searchQuery,
-  });
-  const sortedVaults = sortVaults(filteredVaults, sortOptions);
+  // Normalize sort options against the allowed set so an out-of-range value
+  // (e.g. from a stale persisted preference) cannot reach the sort util.
+  const safeSortOptions = useMemo<VaultSortOptions>(() => {
+    const by = VALID_SORT_BY.includes(sortOptions.by)
+      ? sortOptions.by
+      : "deadline";
+    const dir = VALID_SORT_DIR.includes(sortOptions.dir)
+      ? sortOptions.dir
+      : "asc";
+    return { by, dir };
+  }, [sortOptions.by, sortOptions.dir]);
+
+  // Apply filters and sorting. Memoized so identity is stable across renders
+  // that do not change inputs, keeping downstream rendering deterministic.
+  const sortedVaults = useMemo(() => {
+    const filtered = filterVaults(vaults, filters);
+    return sortVaults(filtered, safeSortOptions);
+  }, [vaults, filters, safeSortOptions]);
+
+  const hasActiveFilters =
+    filters.status !== "all" || filters.query.trim().length > 0;
 
   return (
     <div>
@@ -201,6 +275,67 @@ export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
         </div>
       </div>
 
+      <VaultFilterBar value={filters} onChange={setFilters} />
+
+      <div
+        style={{
+          display: "flex",
+          gap: "0.75rem",
+          alignItems: "center",
+          margin: "1rem 0",
+          flexWrap: "wrap",
+        }}
+      >
+        <label htmlFor="vault-sort-by" style={{ fontSize: 14, color: "var(--muted)" }}>
+          Sort by
+        </label>
+        <select
+          id="vault-sort-by"
+          aria-label="Sort vaults by"
+          value={safeSortOptions.by}
+          onChange={(e) =>
+            setSortOptions((prev) => ({
+              ...prev,
+              by: e.target.value as VaultSortOptions["by"],
+            }))
+          }
+          style={{
+            background: "var(--surface)",
+            color: "var(--text)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius)",
+            padding: "0.5rem 0.75rem",
+            fontSize: 14,
+            cursor: "pointer",
+            minHeight: 44,
+          }}
+        >
+          <option value="deadline">Deadline</option>
+          <option value="amount">Amount</option>
+        </select>
+        <button
+          aria-label={`Sort ${safeSortOptions.dir === "asc" ? "descending" : "ascending"}`}
+          onClick={() =>
+            setSortOptions((prev) => ({
+              ...prev,
+              dir: prev.dir === "asc" ? "desc" : "asc",
+            }))
+          }
+          style={{
+            background: "var(--surface)",
+            color: "var(--text)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius)",
+            padding: "0.5rem 0.75rem",
+            fontSize: 14,
+            cursor: "pointer",
+            minHeight: 44,
+          }}
+        >
+          {safeSortOptions.dir === "asc" ? "↑ Asc" : "↓ Desc"}
+        </button>
+      </div>
+
       {status === "loading" && (
         <div
           style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
@@ -220,16 +355,29 @@ export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
         </div>
       )}
 
-      {status === "error" && (
-        <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
+      {status === "data" && sortedVaults.length === 0 && hasActiveFilters && (
+        <div
+          data-testid="no-matching-vaults"
+          style={{ textAlign: "center", padding: "3rem 1rem" }}
+        >
           <Text role="body" as="p">
-            Failed to load vaults.
+            No vaults match your filters.
           </Text>
-          <button onClick={retry}>Retry</button>
         </div>
       )}
 
-      {status === "data" && (
+      {status === "error" && (
+        <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
+          <Text role="body" as="p">
+            Failed to load vaults. Please try again.
+          </Text>
+          <button onClick={retry} disabled={retryCount >= MAX_RETRIES}>
+            {retryCount >= MAX_RETRIES ? "Retry limit reached" : "Retry"}
+          </button>
+        </div>
+      )}
+
+      {status === "data" && sortedVaults.length > 0 && (
         <>
           {viewMode === "list" && (
             <div
@@ -347,6 +495,13 @@ export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
   );
 }
 
+// `VaultsInner` renders react-router `<Link>`s, which throw if rendered
+// outside of a Router context. The app always mounts `Vaults` under the
+// top-level router, but this component can also be used standalone (e.g. in
+// isolated tests or embeds), so fall back to a local `MemoryRouter` when no
+// ambient router context is present.
 export default function Vaults(props: VaultsInnerProps) {
-  return <VaultsInner {...props} />;
+  const inRouterContext = useInRouterContext();
+  const content = <VaultsInner {...props} />;
+  return inRouterContext ? content : <MemoryRouter>{content}</MemoryRouter>;
 }

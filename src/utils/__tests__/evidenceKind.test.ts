@@ -38,9 +38,10 @@ describe('evidenceKind', () => {
     });
 
     it('should classify Figma URLs', () => {
+      // Host is normalized to the canonical brand hostname, same as GitHub above.
       expect(classifyEvidenceUrl('https://www.figma.com/file/abc123')).toEqual({
         kind: 'figma',
-        host: 'www.figma.com'
+        host: 'figma.com'
       });
     });
 

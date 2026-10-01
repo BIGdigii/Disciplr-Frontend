@@ -1,33 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { vaults } from "@/components/Notification/exampleNotification/example";
 import { Text } from "@/components/Text";
 import { Switch } from "@/components/Switch";
 import { useNotificationPreferences } from "../Zustand/Store";
+import { isValidQuietTime } from "../utils/quietHours";
 
-
-type SettingsToggleProps = {
-  checked?: boolean;
-  label: string;
-  onChange?: (checked: boolean) => void;
-};
-
-function SettingsToggle({ checked, label, onChange }: SettingsToggleProps) {
-  return (
-    <label className="relative inline-flex items-center cursor-pointer">
-      <input
-        type="checkbox"
-        className="sr-only peer"
-        checked={checked}
-        aria-label={label}
-        onChange={(event) => onChange?.(event.target.checked)}
-      />
-      <span
-        className="notification-settings-toggle peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[var(--accent-transparent)]"
-        aria-hidden="true"
-      />
-    </label>
-  );
-}
 
 export default function NotificationSettings() {
   const {
@@ -45,12 +22,13 @@ export default function NotificationSettings() {
   // Determine whether the current time falls within the quiet hour window.
   // quietHours is a single "HH:MM" boundary. Quiet is considered active if
   // the current hour:minute matches or is past the stored quiet-hours value.
-  const [quietHoursActive] = useState<boolean>(() => {
-    if (!quietHours) return false;
+  const quietHoursValid = isValidQuietTime(quietHours);
+  const quietHoursActive = useMemo(() => {
+    if (!quietHoursValid) return false;
     const now = new Date();
     const [qh, qm] = quietHours.split(":").map(Number);
     return now.getHours() > qh || (now.getHours() === qh && now.getMinutes() >= qm);
-  });
+  }, [quietHours, quietHoursValid]);
 
   // Per-vault notification toggles (keyed by vault name)
   const [vaultToggles, setVaultToggles] = useState<Record<string, boolean>>(
@@ -108,7 +86,8 @@ export default function NotificationSettings() {
               name="notification-frequency"
               id="notification-frequency"
             >
-              <option value="1">Occurance</option>
+              <option value="" disabled hidden>Not set</option>
+              <option value="1">Occurrence</option>
               <option value="2">Daily</option>
               <option value="3">Weekly</option>
               <option value="4">Never</option>
@@ -139,6 +118,7 @@ export default function NotificationSettings() {
                   type="time"
                   id="quiet-hours"
                   aria-label="Quiet Hours"
+                  aria-invalid={!quietHoursValid}
                   value={quietHours}
                   onChange={(e) => setQuietHours(e.target.value)}
                 />
@@ -199,18 +179,6 @@ export default function NotificationSettings() {
           border-color: var(--accent);
           outline: 2px solid var(--accent-transparent);
           outline-offset: 2px;
-        }
-
-        .notification-settings-reset {
-          background: var(--surface-raised);
-          color: var(--text);
-          border: 1px solid var(--border);
-          border-radius: var(--radius);
-          cursor: pointer;
-        }
-
-        .notification-settings-reset:hover {
-          background: var(--border);
         }
 
         .notification-settings-reset {

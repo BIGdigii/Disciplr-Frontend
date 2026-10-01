@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Layout from '../Layout';
 import MobileDrawer from '../MobileDrawer';
+import { ThemeProvider } from '../../context/ThemeContext';
 
 const focusTrapState = vi.hoisted(() => ({
   options: [] as Array<Record<string, unknown>>,
@@ -148,11 +149,13 @@ describe('Layout drawer integration', () => {
 
   test('marks background content inert while the drawer is open', () => {
     render(
-      <MemoryRouter>
-        <Layout>
-          <p>Page content</p>
-        </Layout>
-      </MemoryRouter>,
+      <ThemeProvider>
+        <MemoryRouter>
+          <Layout>
+            <p>Page content</p>
+          </Layout>
+        </MemoryRouter>
+      </ThemeProvider>,
     );
 
     const trigger = screen.getByRole('button', { name: /open navigation menu/i });
@@ -285,5 +288,134 @@ describe('MobileDrawer active links', () => {
     const analyticsLink = screen.getByRole('link', { name: /analytics/i });
     expect(analyticsLink).not.toHaveAttribute('aria-current');
     expect(analyticsLink).not.toHaveClass('active');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recovery and hostile-input boundary
+// ---------------------------------------------------------------------------
+function ReRenderHarness() {
+  const [isOpen, setOpen] = useState(false);
+  const [, setTick] = useState(0);
+
+  return (
+    <MemoryRouter>
+      <button type="button" onClick={() => setOpen(true)}>
+        Open navigation menu
+      </button>
+      <button type="button" onClick={() => setTick((t) => t + 1)}>
+        Re-render
+      </button>
+      <MobileDrawer isOpen={isOpen} onClose={() => setOpen(false)} />
+    </MemoryRouter>
+  );
+}
+
+describe('MobileDrawer recovery and hostile-input boundary', () => {
+  beforeEach(() => {
+    focusTrapState.options = [];
+    document.body.style.overflow = '';
+  });
+
+  test('restores the exact previous body overflow instead of clobbering it', () => {
+    document.body.style.overflow = 'auto';
+
+    const { rerender } = render(
+      <MemoryRouter>
+        <MobileDrawer isOpen onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(document.body.style.overflow).toBe('hidden');
+
+    rerender(
+      <MemoryRouter>
+        <MobileDrawer isOpen={false} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(document.body.style.overflow).toBe('auto');
+  });
+
+  test('treats a non-boolean isOpen as closed (hostile-input boundary)', () => {
+    render(
+      <MemoryRouter>
+        <MobileDrawer isOpen={'true' as unknown as boolean} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe('');
+  });
+
+  test('does not crash when onClose is missing (hostile-input boundary)', () => {
+    render(
+      <MemoryRouter>
+        <MobileDrawer isOpen onClose={undefined as unknown as () => void} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('dialog', { name: /navigation/i })).toBeInTheDocument();
+
+    expect(() => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        cancelable: true,
+        bubbles: true,
+      });
+      document.dispatchEvent(event);
+    }).not.toThrow();
+
+    expect(() => {
+      fireEvent.click(screen.getByRole('dialog', { name: /navigation/i }).parentElement as HTMLElement);
+    }).not.toThrow();
+  });
+
+  test('does not attempt to restore focus to a trigger that is no longer connected (recovery)', () => {
+    // Simulate the focus trigger being removed from the document while the
+    // drawer is open (e.g. an interrupted navigation drops the header button).
+    const detachedTrigger = document.createElement('button');
+    const activeElementDescriptor = Object.getOwnPropertyDescriptor(document, 'activeElement');
+
+    Object.defineProperty(document, 'activeElement', {
+      configurable: true,
+      get: () => detachedTrigger,
+    });
+
+    const { unmount } = render(
+      <MemoryRouter>
+        <MobileDrawer isOpen onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('dialog', { name: /navigation/i })).toBeInTheDocument();
+
+    const focusSpy = vi.spyOn(detachedTrigger, 'focus');
+
+    expect(() => unmount()).not.toThrow();
+    // Recovery contract: never focus a detached node.
+    expect(focusSpy).not.toHaveBeenCalled();
+
+    if (activeElementDescriptor) {
+      Object.defineProperty(document, 'activeElement', activeElementDescriptor);
+    } else {
+      delete (document as any).activeElement;
+    }
+  });
+
+  test('keeps the original trigger as the focus-restore target across parent re-renders', async () => {
+    render(<ReRenderHarness />);
+    const trigger = screen.getByRole('button', { name: /open navigation menu/i });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    // Focus moves inside the drawer, then the parent re-renders with a new
+    // onClose identity. The focus-restore target must stay the original
+    // trigger, not whatever element happens to have focus mid-interaction.
+    const closeButton = screen.getByRole('button', { name: /close navigation drawer/i });
+    closeButton.focus();
+    fireEvent.click(screen.getByRole('button', { name: /re-render/i }));
+
+    fireEvent.click(closeButton);
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
   });
 });

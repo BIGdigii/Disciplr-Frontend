@@ -203,7 +203,27 @@ describe('filterPending', () => {
 
     it('handles whitespace-only query', () => {
       const result = filterPending(mockTasks, { query: '   ' });
-      expect(result).toEqual([]);
+      expect(result).toEqual(mockTasks);
+    });
+
+    it('handles empty query', () => {
+      const result = filterPending(mockTasks, { query: '' });
+      expect(result).toEqual(mockTasks);
+    });
+
+    it('handles tab character query', () => {
+      const result = filterPending(mockTasks, { query: '\t' });
+      expect(result).toEqual(mockTasks);
+    });
+
+    it('handles newline character query', () => {
+      const result = filterPending(mockTasks, { query: '\n' });
+      expect(result).toEqual(mockTasks);
+    });
+
+    it('handles multiple whitespace characters query', () => {
+      const result = filterPending(mockTasks, { query: ' \t\n \t' });
+      expect(result).toEqual(mockTasks);
     });
 
     it('handles query with leading/trailing whitespace', () => {
@@ -356,9 +376,10 @@ describe('filterPending', () => {
       expect(resultUpper[0].id).toBe('v-3');
     });
 
-    it('whitespace-only query with milestone returns empty (not all milestone tasks)', () => {
+    it('whitespace-only query with milestone returns only milestone tasks', () => {
       const result = filterPending(mockTasks, { query: '   ', milestone: 'Phase 1' });
-      expect(result).toHaveLength(0);
+      expect(result).toHaveLength(2);
+      expect(result.map((t) => t.id)).toEqual(['v-1', 'v-3']);
     });
   });
 });
