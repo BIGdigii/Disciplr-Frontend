@@ -12,12 +12,13 @@ function safeGetItem(key: string): string | null {
   }
 }
 
-function safeSetItem(key: string, value: string): void {
+function safeSetItem(key: string, value: UserPreference): void {
   try {
     localStorage.setItem(key, value);
   } catch {
-    // persist in-memory when storage is unavailable
-    memoryPreference = value as UserPreference;
+    // persist in-memory when storage is unavailable; value is already
+    // typed as UserPreference so no cast is required here.
+    memoryPreference = value;
   }
 }
 
