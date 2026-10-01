@@ -6,9 +6,8 @@ import { computeAnalyticsKpis, formatCurrency, formatPercentage, type AnalyticsD
 import { type Period, parsePeriod, serializePeriod } from '../utils/periodParam'
 import { logger } from '../utils/logger'
 import Skeleton from '../components/Skeleton'
+import type { jsPDF } from 'jspdf'
 const AnalyticsCharts = lazy(() => import('./AnalyticsCharts'))
-
-type JsPDFCtor = typeof import('jspdf').jsPDF
 
 import {
   Target, CheckCircle, Award, ArrowUpRight, ArrowDownRight, Clock, DollarSign,
@@ -103,7 +102,7 @@ export default function Analytics() {
   const [goalRate, setGoalRate] = useState('90')
   const [goalCapital, setGoalCapital] = useState('5000')
   const [isLoading] = useState(false)
-  const jsPDFRef = useRef<JsPDFCtor | null>(null)
+  const jsPDFRef = useRef<typeof jsPDF | null>(null)
   const [isExportLoading, setIsExportLoading] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
   // Synchronous re-entrancy guard: `isExportLoading` only disables the button
