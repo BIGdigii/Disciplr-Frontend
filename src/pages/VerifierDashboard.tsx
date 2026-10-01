@@ -167,7 +167,7 @@ export default function VerifierDashboard() {
               <div
                 key={task.id}
                 className="p-4 border rounded shadow-sm flex flex-col md:flex-row justify-between md:items-center transition gap-4"
-                style={{ background: 'var(--bg)', borderColor: 'var(--border')' }}
+                style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
               >
                 <div>
                   <div className="flex items-center gap-2 mb-1">
