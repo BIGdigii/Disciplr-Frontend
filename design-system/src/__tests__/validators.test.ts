@@ -288,7 +288,7 @@ describe('isValidColorToken', () => {
     expect(isValidColorToken(Symbol('test'))).toBe(false);
   });
 
-  it('rejects partially-shaped objects with missing required fields', () => {
+  it('rejects partially-shaped objects with missing required field', () => {
     expect(isValidColorToken({})).toBe(false);
     expect(isValidColorToken({ $type: 'color' })).toBe(false);
     expect(isValidColorToken({ $value: '#112233' })).toBe(false);
@@ -318,10 +318,30 @@ describe('isValidColorToken', () => {
     expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: null } })).toBe(false);
     expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: [] } })).toBe(false);
     expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: { protanopia: 123 } } })).toBe(false);
+    expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: 'string' } })).toBe(false);
+    expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: {} } })).toBe(true);
   });
 });
 
 describe('isValidChartTokens', () => {
+  it('accepts a well-formed chart token group', () => {
+    expect(isValidChartTokens(validChart())).toBe(true);
+  });
+
+  it('accepts shorthand and alpha hex colors in chart tokens', () => {
+    const chart = validChart();
+    chart.axis = tokenGroup('#fff');
+    chart.grid = tokenGroup('#ffff');
+    chart.tooltipBg = tokenGroup('#3B82F6AA');
+    expect(isValidChartTokens(chart)).toBe(true);
+  });
+
+  it('rejects malformed chart token groups', () => {
+    expect(isValidChartTokens(null)).toBe(false);
+    expect(isValidChartTokens({})).toBe(false);
+    expect(isValidChartTokens({ ...validChart(), axis: tokenGroup('#bad') })).toBe(false);
+  });
+
   it('accepts a well-formed chart token set', () => {
     expect(isValidChartTokens(validChart())).toBe(true);
   });
