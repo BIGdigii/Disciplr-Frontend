@@ -8,7 +8,10 @@ import { truncateMiddle } from "../utils/truncate";
 import { Tooltip } from "../components/Tooltip";
 import Breadcrumb from "../components/Breadcrumb";
 import { MASTER_VAULTS } from "../fixtures/vaults";
-import { getCachedActivity, type VaultActivityRecord } from "../services/vaultService";
+import {
+  getCachedActivity,
+  type VaultActivityRecord,
+} from "../services/vaultService";
 import { formatRelativeTime } from "../utils/relativeTime";
 import {
   sortTransactions,
@@ -98,7 +101,6 @@ const STATUS_META: Record<TxStatus, StatusMeta> = {
   },
 };
 
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmtTime(date: Date): string {
@@ -155,6 +157,7 @@ export default function VaultTransactions({
   const [failedAnchor, setFailedAnchor] = useState(0);
   const [restAnchor, setRestAnchor] = useState(0);
 
+  // Prefer route-provided transactions; otherwise use the cached activity list.
   const transactions = useMemo(
     () => providedTransactions ?? getCachedActivity(),
     [providedTransactions],
@@ -175,10 +178,7 @@ export default function VaultTransactions({
         { label: routeVaultName, to: `/vaults/${id}` },
         { label: "Transactions" },
       ]
-    : [
-        { label: "Home", to: "/" },
-        { label: "Transactions" },
-      ];
+    : [{ label: "Home", to: "/" }, { label: "Transactions" }];
 
   const copy = useCallback((text: string, id: string) => {
     navigator.clipboard.writeText(text).catch(() => {});
@@ -190,11 +190,7 @@ export default function VaultTransactions({
     setSortState((current) => ({
       key,
       dir:
-        current.key === key
-          ? current.dir === "desc"
-            ? "asc"
-            : "desc"
-          : "asc",
+        current.key === key ? (current.dir === "desc" ? "asc" : "desc") : "asc",
     }));
     setPendingAnchor(0);
     setFailedAnchor(0);
@@ -257,7 +253,14 @@ export default function VaultTransactions({
     setPendingAnchor(0);
     setFailedAnchor(0);
     setRestAnchor(0);
-  }, [selectedTypes, filterVault, filterStatus, searchHash, amountMin, amountMax]);
+  }, [
+    selectedTypes,
+    filterVault,
+    filterStatus,
+    searchHash,
+    amountMin,
+    amountMax,
+  ]);
 
   // windowRange is applied per-section; each section independently does not
   // exceed WINDOW_THRESHOLD in typical use, but large "confirmed" lists will.
@@ -292,10 +295,7 @@ export default function VaultTransactions({
     return counts;
   }, [filtered]);
 
-  const filteredTotals = useMemo(
-    () => computeTxTotals(filtered),
-    [filtered],
-  );
+  const filteredTotals = useMemo(() => computeTxTotals(filtered), [filtered]);
 
   const clearFilters = () => {
     setSelectedTypes([...ALL_TYPES]);
@@ -383,12 +383,18 @@ export default function VaultTransactions({
           </div>
 
           {/* Type Filter Toolbar */}
-          <div className="vt-type-toolbar" role="group" aria-label="Filter by transaction type">
+          <div
+            className="vt-type-toolbar"
+            role="group"
+            aria-label="Filter by transaction type"
+          >
             <button
               className={`vt-type-chip ${selectedTypes.length === ALL_TYPES.length ? "vt-type-chip--active-all" : ""}`}
               onClick={() =>
                 setSelectedTypes(
-                  selectedTypes.length === ALL_TYPES.length ? [] : [...ALL_TYPES],
+                  selectedTypes.length === ALL_TYPES.length
+                    ? []
+                    : [...ALL_TYPES],
                 )
               }
               aria-pressed={selectedTypes.length === ALL_TYPES.length}
@@ -421,9 +427,14 @@ export default function VaultTransactions({
                   }
                   aria-pressed={active}
                 >
-                  <meta.icon size={13} color={active ? meta.color : undefined} />
+                  <meta.icon
+                    size={13}
+                    color={active ? meta.color : undefined}
+                  />
                   <span className="vt-type-chip-label">{meta.label}</span>
-                  <span className="vt-type-chip-count">{filteredTypeCounts[type] ?? 0}</span>
+                  <span className="vt-type-chip-count">
+                    {filteredTypeCounts[type] ?? 0}
+                  </span>
                 </button>
               );
             })}
@@ -495,9 +506,7 @@ export default function VaultTransactions({
                 onClick={() => updateSort("timestamp")}
               >
                 <SortIcon
-                  dir={
-                    sortState.key === "timestamp" ? sortState.dir : "desc"
-                  }
+                  dir={sortState.key === "timestamp" ? sortState.dir : "desc"}
                 />
                 {sortState.key === "timestamp" && sortState.dir === "asc"
                   ? "Oldest"
@@ -536,7 +545,9 @@ export default function VaultTransactions({
                   total={pending.length}
                   onPrev={() => setPendingAnchor((a) => Math.max(0, a - 10))}
                   onNext={() =>
-                    setPendingAnchor((a) => Math.min(pending.length - 1, a + 10))
+                    setPendingAnchor((a) =>
+                      Math.min(pending.length - 1, a + 10),
+                    )
                   }
                 />
               )}
@@ -796,7 +807,9 @@ const TxRow = memo(function TxRow({
                 onCopy(tx.hash, tx.id + "-hash");
               }}
             >
-              {copiedId === tx.id + "-hash" ? "Copied!" : truncateMiddle(tx.hash, 8, 6)}
+              {copiedId === tx.id + "-hash"
+                ? "Copied!"
+                : truncateMiddle(tx.hash, 8, 6)}
               <CopyIcon small />
             </button>
           </Tooltip>
