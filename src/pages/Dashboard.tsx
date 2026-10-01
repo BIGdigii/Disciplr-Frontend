@@ -10,16 +10,7 @@ import * as dashboardUtils from "../utils/dashboard";
 import type { VaultPreview, Activity, Deadline } from "../utils/dashboard";
 import type { Milestone, Vault } from "../types/vault";
 import { timelineProgress } from "../utils/vaultLifecycle";
-import { logger } from "../utils/logger";
-import { createSingleFlightRunner } from "../utils/singleFlight";
-import {
-  isNonEmptyString,
-  isPositiveAmount,
-  isValidCurrency,
-  isValidIsoTimestamp,
-  isValidVaultRouteId,
-  isVaultStatus,
-} from "../utils/vaultState";
+import { validateVaultPreview, sanitizeActivity } from "../utils/dashboardValidation";
 
 // ── Mock Data ─────────────────────────────────────────────────────────────────
 // Seed data lives in src/fixtures/dashboard.ts. VAULTS are loaded async from
@@ -28,6 +19,38 @@ import { ACTIVITY, DEADLINES, CHART_DATA } from "../fixtures/dashboard";
 import { listVaults } from "../services/vaultService";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+/**
+ * Invariant: only vaults whose preview passes validation are rendered.
+ * Invalid entries are dropped and logged (no sensitive fields) so that
+ * malformed upstream data cannot produce inconsistent summaries or cards.
+ */
+function toSafePreviews(loaded: Vault[]): VaultPreview[] {
+  const safe: VaultPreview[] = [];
+  for (const v of loaded) {
+    const preview: VaultPreview = {
+      id: v.id,
+      name: v.name,
+      amount: v.amount,
+      currency: v.currency,
+      status: v.status as VaultStatus,
+      deadline: v.deadline,
+      progressPct: timelineProgress(v.createdAt, v.deadline),
+    };
+    const result = validateVaultPreview(preview);
+    if (result.ok) {
+      safe.push(preview);
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn("[Dashboard] dropped invalid vault preview", {
+        id: v.id,
+        reason: result.reason,
+      });
+    }
+  }
+  return safe;
+}
 
 const ACTIVITY_CFG: Record<
   Activity["type"],
@@ -337,6 +360,7 @@ export default function Dashboard({
     "loading" | "empty" | "data" | "error"
   >("loading");
   const [retryCount, setRetryCount] = useState(0);
+  const [requestId, setRequestId] = useState(0);
 
   // One load per component instance, single-flight. Concurrent callers receive
   // the in-flight request instead of starting a second one, so a React
@@ -351,6 +375,7 @@ export default function Dashboard({
   // Load vaults asynchronously and ignore results after the component unmounts.
   useEffect(() => {
     let cancelled = false;
+    const currentRequest = requestId;
     setVaultStatus("loading");
     setRejectedCount(0);
 
@@ -371,42 +396,25 @@ export default function Dashboard({
     vaultLoadRunner
       .run()
       .then((loaded) => {
-        if (cancelled) return;
-        const { accepted, rejected, unusable } = readVaultList(loaded);
-        if (unusable) {
-          failWith("invalid_response", Array.isArray(loaded) ? loaded.length : 0);
-          return;
-        }
-        if (rejected > 0) {
-          logger.warn("[dashboard] vault_entries_rejected", { count: rejected });
-        }
-        setFullVaults(accepted);
-        setVaults(
-          accepted.map((v) => ({
-            id: v.id,
-            name: v.name,
-            amount: v.amount,
-            currency: v.currency,
-            // Narrowed by the boundary, so no status cast is needed here.
-            status: v.status,
-            deadline: v.deadline,
-            progressPct: timelineProgress(v.createdAt, v.deadline),
-          })),
-        );
-        setRejectedCount(rejected);
-        setVaultStatus(accepted.length === 0 ? "empty" : "data");
+        if (cancelled || currentRequest !== requestId) return;
+        const safePreviews = toSafePreviews(loaded);
+        setFullVaults(loaded);
+        setVaults(safePreviews);
+        setVaultStatus(safePreviews.length === 0 ? "empty" : "data");
       })
       .catch(() => {
-        if (cancelled) return;
-        failWith("unavailable", 0);
+        if (!cancelled && currentRequest === requestId) setVaultStatus("error");
       });
 
     return () => {
       cancelled = true;
     };
-  }, [vaultLoadRunner, retryCount]);
+  }, [retryCount, requestId]);
 
-  const retryVaults = useCallback(() => setRetryCount((c) => c + 1), []);
+  const retryVaults = useCallback(() => {
+    setRetryCount((c) => c + 1);
+    setRequestId((r) => r + 1);
+  }, []);
 
   // INVARIANT: vault-derived state is surfaced only in the "data" state. Gating
   // at render time (rather than relying on every failure path remembering to
@@ -426,8 +434,7 @@ export default function Dashboard({
   // `activity` / `deadlines` are caller-supplied; a non-array must degrade to
   // "nothing to show" rather than throw while spreading it.
   const memoizedActivity = useMemo(
-    () =>
-      dashboardUtils.processActivity(Array.isArray(activity) ? activity : []),
+    () => dashboardUtils.processActivity(sanitizeActivity(activity)),
     [activity],
   );
   const safeDeadlines = Array.isArray(deadlines) ? deadlines : [];
