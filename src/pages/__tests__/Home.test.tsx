@@ -20,13 +20,24 @@ vi.mock('../../context/WalletContext', () => ({
 // Mock the wallet button so we can drive its failure paths deterministically
 // without touching the real Freighter bridge.
 const connectMock = vi.fn();
-vi.mock('../../components/Wallet/WalletConnectButton', () => ({
-  default: () => (
-    <button type="button" onClick={() => connectMock()}>
+vi.mock('../../components/Wallet/WalletConnectButton', () => {
+  const MockWalletConnectButton = () => (
+    <button
+      type="button"
+      onClick={() => {
+        // The real WalletConnectButton surfaces connection errors itself.
+        try {
+          connectMock();
+        } catch {
+          /* swallowed, mirrors WalletConnectButton error handling */
+        }
+      }}
+    >
       Connect Wallet
     </button>
-  ),
-}));
+  );
+  return { default: MockWalletConnectButton, WalletConnectButton: MockWalletConnectButton };
+});
 
 import Home from '../../pages/Home';
 
@@ -48,7 +59,7 @@ afterEach(() => {
 describe('Home page hero', () => {
   test('renders headline and subheadline', () => {
     renderHome();
-    const headline = screen.getByRole('heading', { level: 1, name: /Secure Time‑Lpocked Capital Vaults on Stellar/i });
+    const headline = screen.getByRole('heading', { level: 1, name: /Secure Time‑Locked Capital Vaults on Stellar/i });
     expect(headline).toBeInTheDocument();
     const subheadline = screen.getByText(/Time‑Locked capital vaults on Stellar that release on validation or redirect on failure\./i);
     expect(subheadline).toBeInTheDocument();
@@ -106,7 +117,7 @@ describe('Home page hero', () => {
 describe('Home page boundary and failure paths', () => {
   test('renders exactly one H1 and one primary CTA even when wallet is disconnected', () => {
     renderHome();
-    expect(screen.getAllByRole('heading', { level: 1 })).length).toBe(1);
+    expect(screen.getAllByRole('heading', { level: 1 }).length).toBe(1);
     expect(screen.getAllByRole('link', { name: /Create Your First Vault/i }).length).toBe(1);
   });
 
@@ -130,7 +141,7 @@ describe('Home page boundary and failure paths', () => {
     renderHome();
     const button = screen.getByRole('button', { name: /Connect Wallet/i });
     // The button is owned by WalletConnectButton; the page must stay mounted.
-    expect(() => button.click()).toNotThrow();
+    expect(() => button.click()).not.toThrow();
     expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
   });
 

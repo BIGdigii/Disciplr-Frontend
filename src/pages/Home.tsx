@@ -146,7 +146,7 @@ export default function Home() {
             Learn more about Stellar and Soroban
           </summary>
           <Text role="body" as="p" style={{ marginTop: 'var(--spacing-2)', color: 'var(--muted)' }}>
-            Stellar is a decentralized network for fast, low-cost cross-border payments. Soroban extends it with smart contract capabilities, making it ideal for programmable finance like Disciplrr.
+            Stellar is a decentralized network for fast, low-cost cross-border payments. Soroban extends it with smart contract capabilities, making it ideal for programmable finance like Disciplr.
           </Text>
         </details>
       </section>
@@ -173,7 +173,7 @@ export default function Home() {
           })}
         </div>
         <Text role="body" as="p" style={{ color: 'var(--muted)', maxWidth: '600px', margin: '0 auto' }}>
-          Disciplrr leverages Stellar's proven infrastructure, used by organizations worldwide for secure financial operations.
+          Disciplr leverages Stellar's proven infrastructure, used by organizations worldwide for secure financial operations.
         </Text>
       </section>
 
