@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { vaults } from "@/components/Notification/exampleNotification/example";
 import { Text } from "@/components/Text";
-import { Switch } from "@/components/Switch";
+import { Switch } from "../components/Switch";
 import { useNotificationPreferences } from "../Zustand/Store";
-import { isValidQuietTime } from "../utils/quietHours";
+import { isValidQuietTime, isValidQuietHoursRange, isQuietHoursActive } from "../utils/quietHours";
 
 
 export default function NotificationSettings() {
@@ -12,6 +12,7 @@ export default function NotificationSettings() {
     push: pushNotification,
     frequency,
     quietHours,
+    quietHoursRange,
     setEmail: setEmailNotification,
     setPush: setPushNotification,
     setFrequency,
@@ -19,16 +20,31 @@ export default function NotificationSettings() {
     reset,
   } = useNotificationPreferences();
 
-  // Determine whether the current time falls within the quiet hour window.
-  // quietHours is a single "HH:MM" boundary. Quiet is considered active if
-  // the current hour:minute matches or is past the stored quiet-hours value.
+  const [quietStartValue, setQuietStartValue] = useState(
+    quietHoursRange?.start ?? quietHours ?? "22:00"
+  );
+  const [quietEndValue, setQuietEndValue] = useState(
+    quietHoursRange?.end ?? "07:00"
+  );
+
+  const quietRangeIsValid = useMemo(
+    () => isValidQuietHoursRange(quietStartValue, quietEndValue),
+    [quietStartValue, quietEndValue]
+  );
+
   const quietHoursValid = isValidQuietTime(quietHours);
-  const quietHoursActive = useMemo(() => {
-    if (!quietHoursValid) return false;
-    const now = new Date();
-    const [qh, qm] = quietHours.split(":").map(Number);
-    return now.getHours() > qh || (now.getHours() === qh && now.getMinutes() >= qm);
-  }, [quietHours, quietHoursValid]);
+  const quietHoursActive = useMemo(
+    () => isQuietHoursActive(quietStartValue, quietEndValue),
+    [quietStartValue, quietEndValue]
+  );
+
+  function updateQuietRange(start: string, end: string) {
+    setQuietStartValue(start);
+    setQuietEndValue(end);
+    if (isValidQuietHoursRange(start, end)) {
+      setQuietHours(start);
+    }
+  }
 
   // Per-vault notification toggles (keyed by vault name)
   const [vaultToggles, setVaultToggles] = useState<Record<string, boolean>>(
@@ -112,15 +128,26 @@ export default function NotificationSettings() {
               </span>
             </div>
             <div className="mt-3">
-              <label className="flex flex-col gap-1" htmlFor="quiet-hours">
+              <label className="flex flex-col gap-1" htmlFor="quiet-start">
                 <input
                   className="notification-settings-field"
                   type="time"
-                  id="quiet-hours"
-                  aria-label="Quiet Hours"
-                  aria-invalid={!quietHoursValid}
-                  value={quietHours}
-                  onChange={(e) => setQuietHours(e.target.value)}
+                  id="quiet-start"
+                  aria-label="Quiet Hours Start"
+                  aria-invalid={!quietRangeIsValid}
+                  value={quietStartValue}
+                  onChange={(e) => updateQuietRange(e.target.value, quietEndValue)}
+                />
+              </label>
+              <label className="flex flex-col gap-1 mt-2" htmlFor="quiet-end">
+                <input
+                  className="notification-settings-field"
+                  type="time"
+                  id="quiet-end"
+                  aria-label="Quiet Hours End"
+                  aria-invalid={!quietRangeIsValid}
+                  value={quietEndValue}
+                  onChange={(e) => updateQuietRange(quietStartValue, e.target.value)}
                 />
               </label>
             </div>
