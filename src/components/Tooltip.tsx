@@ -101,7 +101,7 @@ export function Tooltip({
       : { top: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)" };
 
   const transitionStyle: React.CSSProperties = prefersReducedMotion
-    ? {}
+    ? { transition: "none" }
     : {
         transition: `opacity ${ANIMATION_DURATION_MS}ms ease, transform ${ANIMATION_DURATION_MS}ms ease`,
       };

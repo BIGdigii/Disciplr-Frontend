@@ -422,4 +422,106 @@ describe("Tooltip — prefers-reduced-motion", () => {
       media.restore();
     }
   });
+
+  // ── Reduced Motion Reactivity ──────────────────────────────────────────────
+
+  describe("prefers-reduced-motion reactivity", () => {
+    let listeners: Set<(event: MediaQueryListEvent) => void>;
+    let matches: boolean;
+
+    beforeEach(() => {
+      listeners = new Set();
+      matches = false;
+
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        writable: true,
+        value: vi.fn().mockImplementation((query: string) => ({
+          get matches() {
+            return matches;
+          },
+          media: query,
+          addEventListener: (_event: string, listener: (event: MediaQueryListEvent) => void) => {
+            listeners.add(listener);
+          },
+          removeEventListener: (_event: string, listener: (event: MediaQueryListEvent) => void) => {
+            listeners.delete(listener);
+          },
+          dispatchEvent: vi.fn(),
+        })),
+      });
+    });
+
+    it("applies CSS transition when prefers-reduced-motion is false", () => {
+      matches = false;
+      renderTooltip();
+      const tooltip = screen.getByRole("tooltip", { hidden: true });
+      expect(tooltip.style.transition).toContain("opacity 150ms ease");
+      expect(tooltip.style.transition).toContain("transform 150ms ease");
+    });
+
+    it("applies transition none and immediate hide delay when prefers-reduced-motion is true", () => {
+      matches = true;
+      renderTooltip();
+      const trigger = screen.getByRole("button");
+      const tooltip = screen.getByRole("tooltip", { hidden: true });
+
+      expect(tooltip.style.transition).toBe("none");
+
+      fireEvent.mouseEnter(trigger);
+      expect(tooltip).toHaveStyle({ visibility: "visible" });
+
+      fireEvent.mouseLeave(trigger);
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+      expect(tooltip).toHaveStyle({ visibility: "hidden" });
+    });
+
+    it("reactively updates transition and hide behavior when OS preference changes dynamically", () => {
+      matches = false;
+      renderTooltip();
+      const trigger = screen.getByRole("button");
+      const tooltip = screen.getByRole("tooltip", { hidden: true });
+
+      expect(tooltip.style.transition).toContain("opacity 150ms ease");
+
+      act(() => {
+        matches = true;
+        listeners.forEach((listener) => listener({ matches: true } as MediaQueryListEvent));
+      });
+
+      expect(tooltip.style.transition).toBe("none");
+
+      fireEvent.mouseEnter(trigger);
+      expect(tooltip).toHaveStyle({ visibility: "visible" });
+
+      fireEvent.mouseLeave(trigger);
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+      expect(tooltip).toHaveStyle({ visibility: "hidden" });
+
+      act(() => {
+        matches = false;
+        listeners.forEach((listener) => listener({ matches: false } as MediaQueryListEvent));
+      });
+
+      expect(tooltip.style.transition).toContain("opacity 150ms ease");
+
+      fireEvent.mouseEnter(trigger);
+      expect(tooltip).toHaveStyle({ visibility: "visible" });
+
+      fireEvent.mouseLeave(trigger);
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+      expect(tooltip).toHaveStyle({ visibility: "visible" });
+
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+      expect(tooltip).toHaveStyle({ visibility: "hidden" });
+    });
+  });
 });
