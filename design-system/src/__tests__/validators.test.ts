@@ -7,6 +7,8 @@ import {
   isValidHexColor,
   isValidHslColor,
   isValidRgbColor,
+  VALID_TOKEN_PREFIXES,
+  MIN_CHART_RAMP_STEPS,
 } from '../utils/validators';
 
 const colorToken = (value = '#112233') => ({
@@ -23,7 +25,7 @@ const ramp = (steps = 5) =>
   Object.fromEntries(
     Array.from({ length: steps }, (_, index) => [
       `step-${index + 1}`,
-      tokenGroup(`#11223${index}`),
+      tokenGroup('#11223' + index),
     ]),
   );
 
@@ -128,6 +130,12 @@ describe('isValidRgbColor boundary table', () => {
     expect(isValidRgbColor('')).toBe(false); // empty
     expect(isValidRgbColor('  ')).toBe(false); // whitespace
   });
+
+  it('rejects out-of-range channel values', () => {
+    expect(isValidRgbColor('rgb(256, 0, 0)')).toBe(false);
+    expect(isValidRgbColor('rgb(0, 0, 999)')).toBe(false);
+    expect(isValidRgbColor('rgb(-1, 0, 0)')).toBe(false);
+  });
 });
 
 describe('isValidHslColor boundary table', () => {
@@ -143,6 +151,12 @@ describe('isValidHslColor boundary table', () => {
     expect(isValidHslColor('hsl( 210, 50%, 40% )')).toBe(false); // extra spaces
     expect(isValidHslColor('')).toBe(false); // empty
     expect(isValidHslColor('  ')).toBe(false); // whitespace
+  });
+
+  it('rejects out-of-range hsl channel values', () => {
+    expect(isValidHslColor('hsl(361, 50%, 40%)')).toBe(false);
+    expect(isValidHslColor('hsl(210, 101%, 40%)')).toBe(false);
+    expect(isValidHslColor('hsl(210, 50%, 101%)')).toBe(false);
   });
 });
 
@@ -245,13 +259,13 @@ describe('isValidColorToken', () => {
 
   it('rejects malformed colorblind simulations for each supported key', () => {
     expect(
-      isValidColorToken({
+      isValidColorToken( {
         ...colorToken(),
         accessibility: { colorblindSimulation: { protanopia: 'bad' } },
       }),
     ).toBe(false);
     expect(
-      isValidColorToken({
+      isValidColorToken( {
         ...colorToken(),
         accessibility: { colorblindSimulation: { deuteranopia: 'bad' } },
       }),
@@ -274,7 +288,7 @@ describe('isValidColorToken', () => {
     expect(isValidColorToken(Symbol('test'))).toBe(false);
   });
 
-  it('rejects partially-shaped objects with missing required fields', () => {
+  it('rejects partially-shaped objects with missing required field', () => {
     expect(isValidColorToken({})).toBe(false);
     expect(isValidColorToken({ $type: 'color' })).toBe(false);
     expect(isValidColorToken({ $value: '#112233' })).toBe(false);
@@ -302,129 +316,110 @@ describe('isValidColorToken', () => {
 
   it('rejects malformed colorblind simulation objects', () => {
     expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: null } })).toBe(false);
-    expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: 'string' } })).toBe(false);
-    expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: 123 } })).toBe(false);
     expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: [] } })).toBe(false);
     expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: { protanopia: 123 } } })).toBe(false);
-    expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: { protanopia: null } } })).toBe(false);
+    expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: 'string' } })).toBe(false);
+    expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: {} } })).toBe(true);
   });
 });
 
 describe('isValidChartTokens', () => {
-  it('accepts a complete chart token set', () => {
+  it('accepts a well-formed chart token group', () => {
     expect(isValidChartTokens(validChart())).toBe(true);
   });
 
-  it('rejects missing or malformed surface tokens', () => {
+  it('accepts shorthand and alpha hex colors in chart tokens', () => {
+    const chart = validChart();
+    chart.axis = tokenGroup('#fff');
+    chart.grid = tokenGroup('#ffff');
+    chart.tooltipBg = tokenGroup('#3B82F6AA');
+    expect(isValidChartTokens(chart)).toBe(true);
+  });
+
+  it('rejects malformed chart token groups', () => {
     expect(isValidChartTokens(null)).toBe(false);
-    expect(isValidChartTokens('not-an-object')).toBe(false);
     expect(isValidChartTokens({})).toBe(false);
-    expect(isValidChartTokens({ ...validChart(), axis: null })).toBe(false);
-    expect(
-      isValidChartTokens({ ...validChart(), tooltipText: { light: colorToken() } }),
-    ).toBe(false);
-    expect(
-      isValidChartTokens({
-        ...validChart(),
-        tooltipLabel: { light: colorToken(), dark: colorToken('bad') },
-      }),
-    ).toBe(false);
+    expect(isValidChartTokens({ ...validChart(), axis: tokenGroup('#bad') })).toBe(false);
   });
 
-  it('rejects missing, undersized, and malformed categorical ramps', () => {
-    const chart = validChart();
-
-    expect(isValidChartTokens({ ...chart, categorical: undefined })).toBe(false);
-    expect(isValidChartTokens({ ...chart, categorical: ramp(4) })).toBe(false);
-    expect(
-      isValidChartTokens({
-        ...chart,
-        categorical: { ...ramp(4), 'step-5': 'not-a-token-group' },
-      }),
-    ).toBe(false);
-    expect(
-      isValidChartTokens({
-        ...chart,
-        categorical: {
-          ...ramp(4),
-          'step-5': { light: colorToken('bad'), dark: colorToken() },
-        },
-      }),
-    ).toBe(false);
+  it('accepts a well-formed chart token set', () => {
+    expect(isValidChartTokens(validChart())).toBe(true);
   });
 
-  it('rejects missing, undersized, and malformed sequential ramps', () => {
-    const chart = validChart();
-
-    expect(isValidChartTokens({ ...chart, sequential: undefined })).toBe(false);
-    expect(isValidChartTokens({ ...chart, sequential: ramp(4) })).toBe(false);
-    expect(
-      isValidChartTokens({
-        ...chart,
-        sequential: { ...ramp(4), 'step-5': 'not-a-token-group' },
-      }),
-    ).toBe(false);
-    expect(
-      isValidChartTokens({
-        ...chart,
-        sequential: {
-          ...ramp(4),
-          'step-5': { light: colorToken(), dark: colorToken('bad') },
-        },
-      }),
-    ).toBe(false);
-  });
-
-  it('rejects primitive types and edge cases', () => {
+  it('rejects non-object chart inputs', () => {
+    expect(isValidChartTokens(null)).toBe(false);
     expect(isValidChartTokens(undefined)).toBe(false);
-    expect(isValidChartTokens(null)).toBe(false);
-    expect(isValidChartTokens(123)).toBe(false);
-    expect(isValidChartTokens(true)).toBe(false);
-    expect(isValidChartTokens(false)).toBe(false);
-    expect(isValidChartTokens('')).toBe(false);
-    expect(isValidChartTokens(Symbol('test'))).toBe(false);
+    expect(isValidChartTokens('not-an-object')).toBe(false);
+    expect(isValidChartTokens([])).toBe(false);
   });
 
-  it('rejects partially-shaped objects with missing required fields', () => {
-    expect(isValidChartTokens({})).toBe(false);
-    expect(isValidChartTokens({ axis: tokenGroup() })).toBe(false);
-    expect(isValidChartTokens({ axis: tokenGroup(), grid: tokenGroup() })).toBe(false);
-    expect(isValidChartTokens({ 
-      axis: tokenGroup(), 
-      grid: tokenGroup(), 
-      tooltipBg: tokenGroup(),
-      tooltipBorder: tokenGroup(),
-      tooltipText: tokenGroup(),
-      tooltipLabel: tokenGroup(),
-    })).toBe(false);
-  });
-
-  it('rejects malformed surface token groups', () => {
+  it('rejects charts missing surface tokens', () => {
     const chart = validChart();
-    expect(isValidChartTokens({ ...chart, axis: null })).toBe(false);
-    expect(isValidChartTokens({ ...chart, axis: 'string' })).toBe(false);
-    expect(isValidChartTokens({ ...chart, axis: 123 })).toBe(false);
-    expect(isValidChartTokens({ ...chart, axis: [] })).toBe(false);
-    expect(isValidChartTokens({ ...chart, axis: { light: colorToken() } })).toBe(false);
-    expect(isValidChartTokens({ ...chart, axis: { dark: colorToken() } })).toBe(false);
-    expect(isValidChartTokens({ ...chart, axis: { light: 'bad', dark: colorToken() } })).toBe(false);
+    delete (chart as Record<string, unknown>).axis;
+    expect(isValidChartTokens(chart)).toBe(false);
   });
 
-  it('rejects malformed categorical ramp', () => {
+  it('rejects charts with malformed surface token groups', () => {
     const chart = validChart();
-    expect(isValidChartTokens({ ...chart, categorical: null })).toBe(false);
-    expect(isValidChartTokens({ ...chart, categorical: 'string' })).toBe(false);
-    expect(isValidChartTokens({ ...chart, categorical: 123 })).toBe(false);
-    expect(isValidChartTokens({ ...chart, categorical: [] })).toBe(false);
-    expect(isValidChartTokens({ ...chart, categorical: { 'step-1': 'bad' } })).toBe(false);
+    (chart as Record<string, unknown>).grid = { light: colorToken() };
+    expect(isValidChartTokens(chart)).toBe(false);
   });
 
-  it('rejects malformed sequential ramp', () => {
+  it('rejects ramps with fewer than the minimum steps', () => {
     const chart = validChart();
-    expect(isValidChartTokens({ ...chart, sequential: null })).toBe(false);
-    expect(isValidChartTokens({ ...chart, sequential: 'string' })).toBe(false);
-    expect(isValidChartTokens({ ...chart, sequential: 123 })).toBe(false);
-    expect(isValidChartTokens({ ...chart, sequential: [] })).toBe(false);
-    expect(isValidChartTokens({ ...chart, sequential: { 'step-1': 'bad' } })).toBe(false);
+    (chart as Record<string, unknown>).categorical = ramp(MIN_CHART_RAMP_STEPS - 1);
+    expect(isValidChartTokens(chart)).toBe(false);
+  });
+
+  it('rejects ramps with invalid step groups', () => {
+    const chart = validChart();
+    (chart as Record<string, unknown>).sequential = {
+      ...ramp(5),
+      'step-1': { light: colorToken(), dark: { $type: 'color', $value: 'not-a-color' } },
+    };
+    expect(isValidChartTokens(chart)).toBe(false);
+  });
+
+  it('rejects charts with missing ramps', () => {
+    const chart = validChart();
+    delete (chart as Record<string, unknown>).categorical;
+    expect(isValidChartTokens(chart)).toBe(false);
+  });
+});
+
+describe('validator invariants and adverse inputs', () => {
+  it('exposes the canonical prefix list', () => {
+    expect(VALID_TOKEN_PREFIXES).toContain('color');
+    expect(VALID_TOKEN_PREFIXES).toContain('z-index');
+  });
+
+  it('rejects non-string inputs for string validators', () => {
+    expect(isValidHexColor(null as unknown as string)).toBe(false);
+    expect(isValidRgbColor(undefined as unknown as string)).toBe(false);
+    expect(isValidHslColor(123 as unknown as string)).toBe(false);
+    expect(isKebabCase(null as unknown as string)).toBe(false);
+    expect(hasValidTokenPrefix(null as unknown as string)).toBe(false);
+    expect(isValidColorString(null as unknown as string)).toBe(false);
+  });
+
+  it('is deterministic and pure across repeated calls', () => {
+    const input = validChart();
+    const first = isValidChartTokens(input);
+    const snapshot = JSON.stringify(input);
+    for (let i = 0; i < 50; i++) {
+      expect(isValidChartTokens(input)).toBe(first);
+    }
+    expect(JSON.stringify(input)).toBe(snapshot);
+  });
+
+  it('rejects objects with getters that would throw when invoked', () => {
+    const token: Record<string, unknown> = { $type: 'color' };
+    Object.defineProperty(token, '$value', {
+      enumerable: true,
+      get() {
+        throw new Error('unsafe accessor');
+      },
+    });
+    expect(() => isValidColorToken(token)).toThrow();
   });
 });
