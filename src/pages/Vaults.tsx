@@ -132,6 +132,13 @@ export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
       .then((data) => {
         // Ignore stale responses from superseded requests and unmounted trees.
         if (cancelled || requestId !== requestIdRef.current) return;
+        // A present but non-array payload is a malformed response: surface it
+        // as an error instead of an empty list. null/undefined degrade to empty.
+        if (data != null && !Array.isArray(data)) {
+          setVaults([]);
+          setStatus("error");
+          return;
+        }
         const safe = sanitizeVaults(data);
         setVaults(safe);
         setStatus(safe.length === 0 ? "empty" : "data");
