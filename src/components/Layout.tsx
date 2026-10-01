@@ -13,7 +13,6 @@ import { ToastViewport } from "./ToastViewport";
 import ThemeToggle from "./ThemeToggle";
 import CommandPalette from "./CommandPalette";
 import {
-  DrawerAction,
   DRAWER_INITIAL_STATE,
   isDrawerOpen,
   reduceDrawerState,
@@ -32,8 +31,8 @@ interface LayoutProps {
  *
  * 1. All transitions go through `reduceDrawerState`, so open/close/toggle
  *    and recovery events are deterministic and idempotent.
- * 2. Route changes close the drawer only when the pathname actually e
-*    changed, guarded by `shouldCloseDrawerOnRouteChange`.
+ * 2. Route changes close the drawer only when the pathname actually
+ *    changed, guarded by `shouldCloseDrawerOnRouteChange`.
  * 3. Crossing into the desktop breakpoint forces the drawer closed so the
  *    scroll lock is never left engaged behind a hidden drawer.
  * 4. When the drawer is open, the rest of the app is hidden from assistive
@@ -237,7 +236,7 @@ export default function Layout({ children }: LayoutProps) {
           className="mobile-hamburger"
           aria-label="Open navigation menu"
           aria-controls="mobile-drawer"
-          aria-expanded={boolean effectiveDrawerIsOpen}
+          aria-expanded={effectiveDrawerIsOpen}
           disabled={hamburgerDisabled}
           onClick={toggleDrawer}
         >
