@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CountdownDeadline } from '../components/CountdownDeadline';
 import { ConfirmationModal } from '../components/ConfirmationModal';
@@ -37,6 +37,8 @@ export default function PendingValidations() {
   const [modalOpen, setModalOpen] = useState(false);
   const [pendingDecision, setPendingDecision] = useState<'approve' | 'reject'>('approve');
   const selectAllRef = useRef<HTMLInputElement>(null);
+  const inFlightRef = useRef(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Get unique milestones from all pending validations
   const availableMilestones = useMemo(() => {
@@ -80,11 +82,12 @@ export default function PendingValidations() {
     }
   }, [someSelected]);
 
-  const toggleOne = (id: string) => {
+  const toggleOne = useCallback((id: string) => {
+    if (typeof id !== 'string' || id.length === 0) return;
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
-  };
+  }, []);
 
   const toggleAll = () => {
     setSelectedIds(allSelected ? [] : allIds);
@@ -92,18 +95,38 @@ export default function PendingValidations() {
 
   const openBatch = (decision: 'approve' | 'reject') => {
     if (selectedIds.length === 0) return;
+    if (inFlightRef.current) return;
+    setActionError(null);
     setPendingDecision(decision);
     setModalOpen(true);
   };
 
   const handleConfirm = (decision: 'approve' | 'reject', notes: string) => {
-    if (decision === 'approve') {
-      batchApprove(selectedIds, notes);
-    } else {
-      batchReject(selectedIds, notes);
+    if (inFlightRef.current) return;
+    if (selectedIds.length === 0) {
+      setModalOpen(false);
+      return;
     }
-    setSelectedIds([]);
-    setModalOpen(false);
+    const ids = [...selectedIds];
+    inFlightRef.current = true;
+    setActionError(null);
+    try {
+      if (decision === 'approve') {
+        batchApprove(ids, notes);
+      } else {
+        batchReject(ids, notes);
+      }
+      setSelectedIds([]);
+      setModalOpen(false);
+    } catch {
+      setActionError(
+        decision === 'approve'
+          ? 'Failed to approve selected validations. Please retry.'
+          : 'Failed to reject selected validations. Please retry.',
+      );
+    } finally {
+      inFlightRef.current = false;
+    }
   };
 
   const hasSelection = selectedIds.length > 0;
@@ -351,6 +374,17 @@ export default function PendingValidations() {
         </div>
       </div>
 
+      {actionError && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="mx-auto w-full max-w-2xl rounded-lg border px-4 py-3 text-sm"
+          style={{ background: 'var(--danger-transparent)', borderColor: 'var(--danger)', color: 'var(--danger)' }}
+        >
+          {actionError}
+        </div>
+      )}
+
       <ConfirmationModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -407,5 +441,3 @@ function SortableHeader({
   );
 }
 
- 
- 

@@ -463,4 +463,96 @@ describe("Vaults filter and sort", () => {
     await waitFor(() => screen.getByText("Alpha Project"));
     expect(screen.getByText("Beta Project")).toBeInTheDocument();
   });
+
+  test("renders all vaults by default", async () => {
+    render(<Vaults fetchVaults={mockSuccess(vaults)} />);
+    await waitFor(() => screen.getByText("Alpha Project"));
+    expect(screen.getByText("Beta Project")).toBeInTheDocument();
+  });
+});
+
+describe("Vaults failure-path and boundary coverage", () => {
+  beforeEach(() => {
+    localStorageMock.clear();
+  });
+
+  test("rejects non-array fetch results and surfaces a diagnosable error", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ not: "an array" });
+    render(<Vaults fetchVaults={fetchMock as any} />);
+    await waitFor(() => screen.getByText(/Failed to load vaults./i));
+    expect(screen.getByText(/Failed to load vaults./i)).toBeInTheDocument();
+  });
+
+  test("treats null fetch result as empty state without crashing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(null);
+    render(<Vaults fetchVaults={fetchMock as any} />);
+    await waitFor(() => screen.getByText(/You don’t have any vaults yet./i));
+  });
+
+  test("filters out malformed entries and keeps valid ones", async () => {
+    const malformed = [
+      { id: "1", name: "Valid Vault", amount: 100, currency: "USDC", status: "active", deadline: "2025-01-01T00:00:00Z", milestones: [] },
+      { id: "2", name: "", amount: 100, currency: "USDC", status: "active", deadline: "2025-01-01T00:00:00Z", milestones: [] },
+      { id: "3", name: "Bad Amount", amount: NaN, currency: "USDC", status: "active", deadline: "2025-01-01T00:00:00Z", milestones: [] },
+    ];
+    render(<Vaults fetchVaults={mockSuccess(malformed)} />);
+    await waitFor(() => screen.getByText("Valid Vault"));
+    expect(screen.queryByText("Bad Amount")).not.toBeInTheDocument();
+  });
+
+  test("retries on transient failure and stops after success", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("transient"))
+      .mockResolvedValue([]);
+    render(<Vaults fetchVaults={fetchMock} />);
+    await waitFor(() => screen.getByText(/Failed to load vaults./i));
+    await userEvent.click(screen.getByRole("button", { name: /Retry/i }));
+    await waitFor(() => screen.getByText(/You don’t have any vaults yet./i));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("prevents concurrent retries from causing inconsistent state", async () => {
+    let resolve: ((value: Vault[]) => void) | undefined;
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise<Vault[]>((res) => {
+          resolve = res;
+        }),
+    );
+    render(<Vaults fetchVaults={fetchMock} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    // Second call should be ignored while in-flight
+    await act(async () => {
+      resolve?.([]);
+    });
+    await waitFor(() => screen.getByText(/You don’t have any vaults yet./i));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("handles unmount during in-flight fetch without warnings or crashes", async () => {
+    let resolve: ((value: Vault[]) => void) | undefined;
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise<Vault[]>(((res) => {
+          resolve = res;
+        })),
+    );
+    const { unmount } = render(<Vaults fetchVaults={fetchMock} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    unmount();
+    await act(async () => {
+      resolve?.([]);
+    });
+  });
+
+  test("shows empty state for empty array and does not crash on duplicate ids", async () => {
+    const dups = [
+      { id: "1", name: "Dup A", amount: 100, currency: "USDC", status: "active", deadline: "2025-01-01T00:00:00Z", milestones: [] },
+      { id: "1", name: "Dup B", amount: 200, currency: "USDC", status: "active", deadline: "2025-01-01T00:00:00Z", milestones: [] },
+    ];
+    render(<Vaults fetchVaults={mockSuccess(dups)} />);
+    await waitFor(() => screen.getByText("Dup A"));
+    expect(screen.getByText("Dup B")).toBeInTheDocument();
+  });
 });

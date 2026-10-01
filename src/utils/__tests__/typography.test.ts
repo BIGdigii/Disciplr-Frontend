@@ -7,8 +7,6 @@ import {
   type TypographyRole,
 } from '../typography';
 
-// ── getTypographyClass ────────────────────────────────────────────────────────
-
 describe('getTypographyClass', () => {
   describe('valid inputs', () => {
     const validCases: [TypographyRole, string][] = [
@@ -459,6 +457,11 @@ describe('typography utility integration', () => {
         { numRuns: 200 }
       );
     });
+  });
+
+  it('does not export classifyTypography ensuring dead export surface is removed', async () => {
+    const module = await import('../typography');
+    expect('classifyTypography' in module).toBe(false);
   });
 });
 

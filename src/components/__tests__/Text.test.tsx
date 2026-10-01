@@ -75,6 +75,13 @@ describe('Text Component', () => {
       expect(element.className).toBe('text-caption')
     })
 
+    it('combines typography role with multiple extra classes', () => {
+      render(<Text role="body" className="font-bold underline text-accent">Styled</Text>)
+      const element = screen.getByText('Styled')
+      expect(element).toHaveClass('text-body', 'font-bold', 'underline', 'text-accent')
+      expect(element.className).toBe('text-body font-bold underline text-accent')
+    })
+
     it('forwards ref to the rendered DOM node (callback ref)', () => {
       let capturedNode: HTMLElement | null = null
       render(
@@ -288,6 +295,30 @@ describe('Text Component', () => {
 
     it('maintains Text displayName for debugging and React DevTools', () => {
       expect(Text.displayName).toBe('Text')
+    })
+  })
+
+  describe('Validation & Invariants', () => {
+    it('falls back to body role for invalid runtime role', () => {
+      // @ts-expect-error Testing invalid runtime input
+      render(<Text role="invalid-role" data-testid="invalid-role-test">Invalid role</Text>)
+      expect(screen.getByTestId('invalid-role-test')).toHaveClass('text-body')
+    })
+
+    it('falls back to span for invalid as component prop', () => {
+      // @ts-expect-error Testing invalid runtime input
+      render(<Text role="body" as={123} data-testid="invalid-as-test">Invalid as</Text>)
+      expect(screen.getByTestId('invalid-as-test').tagName).toBe('SPAN')
+
+      // Testing invalid string for `as`
+      // @ts-expect-error Testing invalid runtime input
+      render(<Text role="body" as="<script>" data-testid="invalid-as-string-test">Invalid as string</Text>)
+      expect(screen.getByTestId('invalid-as-string-test').tagName).toBe('SPAN')
+    })
+
+    it('handles undefined className safely', () => {
+      render(<Text role="title" className={undefined} data-testid="undefined-class-test">Undefined class</Text>)
+      expect(screen.getByTestId('undefined-class-test').className).toBe('text-title')
     })
   })
 })

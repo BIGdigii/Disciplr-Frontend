@@ -1,8 +1,8 @@
-import { vi, describe, beforeEach, expect } from 'vitest';
+import { vi, describe, beforeEach, expect, afterEach } from 'vitest';
 import type { BalanceStatus, WalletNetwork } from '@/context/WalletContext';
 
 const walletState = vi.hoisted(() => ({
-    address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW',
+    address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW' as string | null,
     balance: '12.0000000' as string | null,
     balanceStatus: 'success' as BalanceStatus,
     balanceError: null as string | null,
@@ -66,13 +66,7 @@ function mockClipboard(writeText: ReturnType<typeof vi.fn>) {
 
 describe('WalletDropdown balance states', () => {
     beforeEach(() => {
-        walletState.address = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW';
-        walletState.balance = '12.0000000';
-        walletState.balanceStatus = 'success';
-        walletState.balanceError = null;
-        walletState.network = 'TESTNET';
-        walletState.disconnect.mockClear();
-        vi.useRealTimers();
+        resetWalletState();
     });
 
     test('renders the loaded USDC balance', () => {
@@ -144,13 +138,7 @@ describe('WalletDropdown balance states', () => {
 
 describe('WalletDropdown address display', () => {
     beforeEach(() => {
-        walletState.address = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW';
-        walletState.balance = '12.0000000';
-        walletState.balanceStatus = 'success';
-        walletState.balanceError = null;
-        walletState.network = 'TESTNET';
-        walletState.disconnect.mockClear();
-        vi.useRealTimers();
+        resetWalletState();
     });
 
     test('renders the truncated address format', () => {
@@ -162,12 +150,10 @@ describe('WalletDropdown address display', () => {
 
 describe('WalletDropdown clipboard copy', () => {
     beforeEach(() => {
-        walletState.address = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW';
-        walletState.balance = '12.0000000';
-        walletState.balanceStatus = 'success';
-        walletState.balanceError = null;
-        walletState.network = 'TESTNET';
-        walletState.disconnect.mockClear();
+        resetWalletState();
+    });
+
+    afterEach(() => {
         vi.useRealTimers();
     });
 
@@ -213,17 +199,65 @@ describe('WalletDropdown clipboard copy', () => {
 
         error.mockRestore();
     });
+
+    test('retries a failed copy and succeeds on the second attempt', async () => {
+        const writeText = vi.fn()
+            .mockRejectedValueOnce(new Error('denied'))
+            .mockResolvedValue(undefined);
+        mockClipboard(writeText);
+        const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        renderDropdown();
+
+        await act(async () => {
+            screen.getByTitle('Copy Address').click();
+            await Promise.resolve();
+        });
+
+        expect(screen.getByLabelText('copy-icon')).toBeInTheDocument();
+
+        await act(async () => {
+            screen.getByTitle('Copy Address').click();
+            await Promise.resolve();
+        });
+
+        expect(writeText).toHaveBeenCalledWith(walletState.address);
+        expect(screen.getByLabelText('check-icon')).toBeInTheDocument();
+
+        error.mockRestore();
+    });
+
+    test('ignores a stale copy resolution after the address changes', async () => {
+        vi.useFakeTimers();
+        let resolveFirst: () => void = () => undefined;
+        const first = new Promise<void>((resolve) => {
+            resolveFirst = resolve;
+        });
+        const writeText = vi.fn().mockImplementationOnce(() => first).mockResolvedValue(undefined);
+        mockClipboard(writeText);
+
+        const { rerender, onClose, onSwitch } = renderDropdown();
+
+        act(() => {
+            screen.getByTitle('Copy Address').click();
+        });
+
+        walletState.address = 'GXYZ77777777777777777777777777777777777777777777777777777777777777';
+        rerender(<WalletDropdown onClose={onClose} onSwitch={onSwitch} />);
+
+        await act(async () => {
+            resolveFirst();
+            await Promise.resolve();
+        });
+
+        expect(screen.queryByLabelText('check-icon')).not.toBeInTheDocument();
+        expect(screen.getByLabelText('copy-icon')).toBeInTheDocument();
+    });
 });
 
 describe('WalletDropdown explorer link', () => {
     beforeEach(() => {
-        walletState.address = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW';
-        walletState.balance = '12.0000000';
-        walletState.balanceStatus = 'success';
-        walletState.balanceError = null;
-        walletState.network = 'TESTNET';
-        walletState.disconnect.mockClear();
-        vi.useRealTimers();
+        resetWalletState();
     });
 
     test('opens the testnet explorer for testnet wallets with noopener/noreferrer', () => {
@@ -281,6 +315,18 @@ describe('WalletDropdown explorer link', () => {
         screen.getByRole('menuitem', { name: /view on stellar explorer/i }).click();
 
         expect(mockWindow.opener).toBeNull();
+        open.mockRestore();
+    });
+
+    test('does not open an explorer when the address is missing', () => {
+        const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+        walletState.address = null as unknown as string;
+
+        const { container } = renderDropdown();
+
+        expect(container).toBeEmptyDOMElement();
+        expect(open).not.toHaveBeenCalled();
+
         open.mockRestore();
     });
 });

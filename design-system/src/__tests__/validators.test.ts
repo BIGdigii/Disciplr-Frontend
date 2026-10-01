@@ -7,6 +7,8 @@ import {
   isValidHexColor,
   isValidHslColor,
   isValidRgbColor,
+  VALID_TOKEN_PREFIXES,
+  MIN_CHART_RAMP_STEPS,
 } from '../utils/validators';
 
 const colorToken = (value = '#112233') => ({
@@ -23,7 +25,7 @@ const ramp = (steps = 5) =>
   Object.fromEntries(
     Array.from({ length: steps }, (_, index) => [
       `step-${index + 1}`,
-      tokenGroup(`#11223${index}`),
+      tokenGroup('#11223' + index),
     ]),
   );
 
@@ -128,6 +130,12 @@ describe('isValidRgbColor boundary table', () => {
     expect(isValidRgbColor('')).toBe(false); // empty
     expect(isValidRgbColor('  ')).toBe(false); // whitespace
   });
+
+  it('rejects out-of-range channel values', () => {
+    expect(isValidRgbColor('rgb(256, 0, 0)')).toBe(false);
+    expect(isValidRgbColor('rgb(0, 0, 999)')).toBe(false);
+    expect(isValidRgbColor('rgb(-1, 0, 0)')).toBe(false);
+  });
 });
 
 describe('isValidHslColor boundary table', () => {
@@ -143,6 +151,12 @@ describe('isValidHslColor boundary table', () => {
     expect(isValidHslColor('hsl( 210, 50%, 40% )')).toBe(false); // extra spaces
     expect(isValidHslColor('')).toBe(false); // empty
     expect(isValidHslColor('  ')).toBe(false); // whitespace
+  });
+
+  it('rejects out-of-range hsl channel values', () => {
+    expect(isValidHslColor('hsl(361, 50%, 40%)')).toBe(false);
+    expect(isValidHslColor('hsl(210, 101%, 40%)')).toBe(false);
+    expect(isValidHslColor('hsl(210, 50%, 101%)')).toBe(false);
   });
 });
 
@@ -245,13 +259,13 @@ describe('isValidColorToken', () => {
 
   it('rejects malformed colorblind simulations for each supported key', () => {
     expect(
-      isValidColorToken({
+      isValidColorToken( {
         ...colorToken(),
         accessibility: { colorblindSimulation: { protanopia: 'bad' } },
       }),
     ).toBe(false);
     expect(
-      isValidColorToken({
+      isValidColorToken( {
         ...colorToken(),
         accessibility: { colorblindSimulation: { deuteranopia: 'bad' } },
       }),
@@ -302,6 +316,8 @@ describe('isValidColorToken', () => {
 
   it('rejects malformed colorblind simulation objects', () => {
     expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: null } })).toBe(false);
+    expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: [] } })).toBe(false);
+    expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: { protanopia: 123 } } })).toBe(false);
     expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: 'string' } })).toBe(false);
     expect(isValidColorToken({ ...colorToken(), accessibility: { colorblindSimulation: {} } })).toBe(true);
   });
@@ -324,5 +340,86 @@ describe('isValidChartTokens', () => {
     expect(isValidChartTokens(null)).toBe(false);
     expect(isValidChartTokens({})).toBe(false);
     expect(isValidChartTokens({ ...validChart(), axis: tokenGroup('#bad') })).toBe(false);
+  });
+
+  it('accepts a well-formed chart token set', () => {
+    expect(isValidChartTokens(validChart())).toBe(true);
+  });
+
+  it('rejects non-object chart inputs', () => {
+    expect(isValidChartTokens(null)).toBe(false);
+    expect(isValidChartTokens(undefined)).toBe(false);
+    expect(isValidChartTokens('not-an-object')).toBe(false);
+    expect(isValidChartTokens([])).toBe(false);
+  });
+
+  it('rejects charts missing surface tokens', () => {
+    const chart = validChart();
+    delete (chart as Record<string, unknown>).axis;
+    expect(isValidChartTokens(chart)).toBe(false);
+  });
+
+  it('rejects charts with malformed surface token groups', () => {
+    const chart = validChart();
+    (chart as Record<string, unknown>).grid = { light: colorToken() };
+    expect(isValidChartTokens(chart)).toBe(false);
+  });
+
+  it('rejects ramps with fewer than the minimum steps', () => {
+    const chart = validChart();
+    (chart as Record<string, unknown>).categorical = ramp(MIN_CHART_RAMP_STEPS - 1);
+    expect(isValidChartTokens(chart)).toBe(false);
+  });
+
+  it('rejects ramps with invalid step groups', () => {
+    const chart = validChart();
+    (chart as Record<string, unknown>).sequential = {
+      ...ramp(5),
+      'step-1': { light: colorToken(), dark: { $type: 'color', $value: 'not-a-color' } },
+    };
+    expect(isValidChartTokens(chart)).toBe(false);
+  });
+
+  it('rejects charts with missing ramps', () => {
+    const chart = validChart();
+    delete (chart as Record<string, unknown>).categorical;
+    expect(isValidChartTokens(chart)).toBe(false);
+  });
+});
+
+describe('validator invariants and adverse inputs', () => {
+  it('exposes the canonical prefix list', () => {
+    expect(VALID_TOKEN_PREFIXES).toContain('color');
+    expect(VALID_TOKEN_PREFIXES).toContain('z-index');
+  });
+
+  it('rejects non-string inputs for string validators', () => {
+    expect(isValidHexColor(null as unknown as string)).toBe(false);
+    expect(isValidRgbColor(undefined as unknown as string)).toBe(false);
+    expect(isValidHslColor(123 as unknown as string)).toBe(false);
+    expect(isKebabCase(null as unknown as string)).toBe(false);
+    expect(hasValidTokenPrefix(null as unknown as string)).toBe(false);
+    expect(isValidColorString(null as unknown as string)).toBe(false);
+  });
+
+  it('is deterministic and pure across repeated calls', () => {
+    const input = validChart();
+    const first = isValidChartTokens(input);
+    const snapshot = JSON.stringify(input);
+    for (let i = 0; i < 50; i++) {
+      expect(isValidChartTokens(input)).toBe(first);
+    }
+    expect(JSON.stringify(input)).toBe(snapshot);
+  });
+
+  it('rejects objects with getters that would throw when invoked', () => {
+    const token: Record<string, unknown> = { $type: 'color' };
+    Object.defineProperty(token, '$value', {
+      enumerable: true,
+      get() {
+        throw new Error('unsafe accessor');
+      },
+    });
+    expect(() => isValidColorToken(token)).toThrow();
   });
 });

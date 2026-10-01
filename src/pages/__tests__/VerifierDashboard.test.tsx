@@ -309,6 +309,30 @@ describe('VerifierDashboard', () => {
       expect(screen.getByText('Pending Validation')).toBeInTheDocument();
       expect(screen.queryByText('Cancelled')).not.toBeInTheDocument();
     });
+
+    it('renders a rejected task in history with the correct chip label ("Rejected")', () => {
+      const rejectedHistoryTask = {
+        id: 'h-rejected',
+        vaultName: 'Rejected Test Vault',
+        owner: '0xEEEE',
+        amount: '8,000 USDC',
+        deadline: '2026-06-01',
+        daysRemaining: 5,
+        status: 'rejected' as const,
+        milestone: 'Phase 5',
+        decidedAt: '2026-06-03',
+      };
+
+      (useVerifierStore as any).mockImplementation((selector: any) => selector({
+        pendingValidations: [],
+        validationHistory: [rejectedHistoryTask],
+      }));
+
+      renderPage();
+
+      expect(screen.getByText('Rejected Test Vault')).toBeInTheDocument();
+      expect(screen.getByText('Rejected')).toBeInTheDocument();
+    });
   });
 
   describe('authorization and validation regression coverage', () => {

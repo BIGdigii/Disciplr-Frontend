@@ -101,6 +101,8 @@ interface VaultsInnerProps {
   fetchVaults?: () => Promise<Vault[]>;
 }
 
+const MAX_RETRIES = 5;
+
 export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
   const [vaults, setVaults] = useState<Vault[]>([]);
   const [status, setStatus] = useState<"loading" | "empty" | "data" | "error">(
@@ -130,6 +132,13 @@ export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
       .then((data) => {
         // Ignore stale responses from superseded requests and unmounted trees.
         if (cancelled || requestId !== requestIdRef.current) return;
+        // A present but non-array payload is a malformed response: surface it
+        // as an error instead of an empty list. null/undefined degrade to empty.
+        if (data != null && !Array.isArray(data)) {
+          setVaults([]);
+          setStatus("error");
+          return;
+        }
         const safe = sanitizeVaults(data);
         setVaults(safe);
         setStatus(safe.length === 0 ? "empty" : "data");
@@ -147,7 +156,7 @@ export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
     // Clear stale data so a failed retry cannot leave the previous dataset
     // visible alongside an error state.
     setVaults([]);
-    setRetryCount((c) => c + 1);
+    setRetryCount((c) => (c >= MAX_RETRIES ? c : c + 1));
   }, []);
 
   const handleViewChange = useCallback((newView: "list" | "grid") => {
@@ -167,9 +176,15 @@ export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
     return { by, dir };
   }, [sortOptions.by, sortOptions.dir]);
 
-  // Apply filters and sorting
-  const filteredVaults = filterVaults(vaults, filters);
-  const sortedVaults = sortVaults(filteredVaults, safeSortOptions);
+  // Apply filters and sorting. Memoized so identity is stable across renders
+  // that do not change inputs, keeping downstream rendering deterministic.
+  const sortedVaults = useMemo(() => {
+    const filtered = filterVaults(vaults, filters);
+    return sortVaults(filtered, safeSortOptions);
+  }, [vaults, filters, safeSortOptions]);
+
+  const hasActiveFilters =
+    filters.status !== "all" || filters.query.trim().length > 0;
 
   return (
     <div>
@@ -340,24 +355,30 @@ export function VaultsInner({ fetchVaults = DEFAULT_FETCH }: VaultsInnerProps) {
         </div>
       )}
 
+      {status === "data" && sortedVaults.length === 0 && hasActiveFilters && (
+        <div
+          data-testid="no-matching-vaults"
+          style={{ textAlign: "center", padding: "3rem 1rem" }}
+        >
+          <Text role="body" as="p">
+            No vaults match your filters.
+          </Text>
+        </div>
+      )}
+
       {status === "error" && (
         <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
           <Text role="body" as="p">
             Failed to load vaults. Please try again.
           </Text>
-          <button onClick={retry}>Retry</button>
+          <button onClick={retry} disabled={retryCount >= MAX_RETRIES}>
+            {retryCount >= MAX_RETRIES ? "Retry limit reached" : "Retry"}
+          </button>
         </div>
       )}
 
-      {status === "data" && (
+      {status === "data" && sortedVaults.length > 0 && (
         <>
-          {sortedVaults.length === 0 && (
-            <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
-              <Text role="body" as="p">
-                No vaults match your filters.
-              </Text>
-            </div>
-          )}
           {viewMode === "list" && (
             <div
               style={{

@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Tooltip } from "../Tooltip";
+import zIndexTokens from "../../../design-system/tokens/z-index.json";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -249,6 +250,38 @@ describe("Tooltip", () => {
     const tooltip = screen.getByRole("tooltip", { hidden: true });
     expect(tooltip).toHaveStyle({ zIndex: "var(--z-index-tooltip)" });
   });
+
+  it("maintains the z-index token when visible", () => {
+    renderTooltip();
+    const trigger = screen.getByRole("button");
+    fireEvent.mouseEnter(trigger);
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip).toHaveStyle({ zIndex: "var(--z-index-tooltip)" });
+  });
+
+  it("verifies the tooltip token preserves the documented stacking hierarchy", () => {
+    const tooltipValue = zIndexTokens.zIndex.tooltip.$value;
+    const headerValue = zIndexTokens.zIndex.header.$value;
+    const baseValue = zIndexTokens.zIndex.base.$value;
+    const drawerValue = zIndexTokens.zIndex.drawer.$value;
+    const modalValue = zIndexTokens.zIndex.modal.$value;
+
+    expect(tooltipValue).toBe(150);
+    expect(tooltipValue).toBeGreaterThan(headerValue);
+    expect(tooltipValue).toBeGreaterThan(baseValue);
+    expect(tooltipValue).toBeLessThan(drawerValue);
+    expect(tooltipValue).toBeLessThan(modalValue);
+  });
+
+  it("preserves z-index styling when custom className is provided", () => {
+    render(
+      <Tooltip content="Custom class test" className="custom-wrapper-class">
+        <button type="button">Trigger</button>
+      </Tooltip>,
+    );
+    const tooltip = screen.getByRole("tooltip", { hidden: true });
+    expect(tooltip).toHaveStyle({ zIndex: "var(--z-index-tooltip)" });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -388,5 +421,107 @@ describe("Tooltip — prefers-reduced-motion", () => {
     } finally {
       media.restore();
     }
+  });
+
+  // ── Reduced Motion Reactivity ──────────────────────────────────────────────
+
+  describe("prefers-reduced-motion reactivity", () => {
+    let listeners: Set<(event: MediaQueryListEvent) => void>;
+    let matches: boolean;
+
+    beforeEach(() => {
+      listeners = new Set();
+      matches = false;
+
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        writable: true,
+        value: vi.fn().mockImplementation((query: string) => ({
+          get matches() {
+            return matches;
+          },
+          media: query,
+          addEventListener: (_event: string, listener: (event: MediaQueryListEvent) => void) => {
+            listeners.add(listener);
+          },
+          removeEventListener: (_event: string, listener: (event: MediaQueryListEvent) => void) => {
+            listeners.delete(listener);
+          },
+          dispatchEvent: vi.fn(),
+        })),
+      });
+    });
+
+    it("applies CSS transition when prefers-reduced-motion is false", () => {
+      matches = false;
+      renderTooltip();
+      const tooltip = screen.getByRole("tooltip", { hidden: true });
+      expect(tooltip.style.transition).toContain("opacity 150ms ease");
+      expect(tooltip.style.transition).toContain("transform 150ms ease");
+    });
+
+    it("applies transition none and immediate hide delay when prefers-reduced-motion is true", () => {
+      matches = true;
+      renderTooltip();
+      const trigger = screen.getByRole("button");
+      const tooltip = screen.getByRole("tooltip", { hidden: true });
+
+      expect(tooltip.style.transition).toBe("none");
+
+      fireEvent.mouseEnter(trigger);
+      expect(tooltip).toHaveStyle({ visibility: "visible" });
+
+      fireEvent.mouseLeave(trigger);
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+      expect(tooltip).toHaveStyle({ visibility: "hidden" });
+    });
+
+    it("reactively updates transition and hide behavior when OS preference changes dynamically", () => {
+      matches = false;
+      renderTooltip();
+      const trigger = screen.getByRole("button");
+      const tooltip = screen.getByRole("tooltip", { hidden: true });
+
+      expect(tooltip.style.transition).toContain("opacity 150ms ease");
+
+      act(() => {
+        matches = true;
+        listeners.forEach((listener) => listener({ matches: true } as MediaQueryListEvent));
+      });
+
+      expect(tooltip.style.transition).toBe("none");
+
+      fireEvent.mouseEnter(trigger);
+      expect(tooltip).toHaveStyle({ visibility: "visible" });
+
+      fireEvent.mouseLeave(trigger);
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+      expect(tooltip).toHaveStyle({ visibility: "hidden" });
+
+      act(() => {
+        matches = false;
+        listeners.forEach((listener) => listener({ matches: false } as MediaQueryListEvent));
+      });
+
+      expect(tooltip.style.transition).toContain("opacity 150ms ease");
+
+      fireEvent.mouseEnter(trigger);
+      expect(tooltip).toHaveStyle({ visibility: "visible" });
+
+      fireEvent.mouseLeave(trigger);
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+      expect(tooltip).toHaveStyle({ visibility: "visible" });
+
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+      expect(tooltip).toHaveStyle({ visibility: "hidden" });
+    });
   });
 });
