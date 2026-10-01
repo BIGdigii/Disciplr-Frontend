@@ -75,6 +75,13 @@ describe('Text Component', () => {
       expect(element.className).toBe('text-caption')
     })
 
+    it('combines typography role with multiple extra classes', () => {
+      render(<Text role="body" className="font-bold underline text-accent">Styled</Text>)
+      const element = screen.getByText('Styled')
+      expect(element).toHaveClass('text-body', 'font-bold', 'underline', 'text-accent')
+      expect(element.className).toBe('text-body font-bold underline text-accent')
+    })
+
     it('forwards ref to the rendered DOM node (callback ref)', () => {
       let capturedNode: HTMLElement | null = null
       render(

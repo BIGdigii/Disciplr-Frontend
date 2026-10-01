@@ -3,7 +3,6 @@
  * 
  * @example
  * const displayClass = getTypographyClass('display');
- * // Returns 'text-display' which handles responsive sizing
  */
 
 export type TypographyRole = 'display' | 'title' | 'subtitle' | 'body' | 'caption' | 'mono';
