@@ -55,7 +55,7 @@ const VALID_WCAG_LEVELS = ['AA', 'AAA'] as const;
 /** Regular expressions are created once and reused to avoid per-call allocation. */
 const HEX_COLOR_REGEX = /^#(?:[0-9A-F]{3}|[0-9A-F]{4}|[0-9A-F]{6}|[0-9A-F]{8})$/i;
 const RGB_COLOR_REGEX_CANONICAL = /^rgb\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)\)$/;
-const HTS_COLOR_REGEX_CANONICAL = /^hsl\((\d+)(?:deg)?\s*,\s*(\d+(?:\.\d+)?)%\s*,\s*(\d+(?:\.\d+)?)%\)$/;
+const HSL_COLOR_REGEX_CANONICAL = /^hsl\((\d+)(?:deg)?\s*,\s*(\d+(?:\.\d+)?)%\s*,\s*(\d+(?:\.\d+)?)%\)$/;
 const KEBAB_CASE_REGEX_CANONICAL = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
 /** Maximum value for an RGB channel. */
@@ -115,7 +115,7 @@ export function isKebabCase(str: string): boolean {
 
 export function hasValidTokenPrefix(tokenName: string): boolean {
   if (typeof tokenName !== 'string') return false;
-  return VALID_TOKEN_PREFIXES.some((prefix) => tokenName.startsWith(`${prefix},`));
+  return VALID_TOKEN_PREFIXES.some((prefix) => tokenName.startsWith(`${prefix}-`));
 }
 
 export function isValidColorString(color: string): boolean {
