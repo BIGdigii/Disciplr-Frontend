@@ -73,56 +73,69 @@ const PROTECTED_PATHS = [
   '/verifier/queue/:vaultId',
 ] as const
 
+// Wrap a route's page element in a per-route ErrorBoundary so that an
+// unhandled render error is scoped to that page's slot in <main>. The header,
+// nav, and mobile drawer (rendered by Layout outside of <main>) remain mounted
+// and navigable when a single page crashes. Layout also provides a secondary
+// ErrorBoundary around its <main> content as a backstop.
+function RouteErrorBoundary({ children }: { children: ReactNode }) {
+  return <ErrorBoundary>{children}</ErrorBoundary>
+}
+
 export default function App() {
   return (
     <ThemeProvider>
       <WalletProvider>
         <AppConfigProvider>
           <BrowserRouter>
-            <ErrorBoundary>
-              <Layout>
-                <Routes>
-                  <Route path="/" element={<Home />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/vaults" element={<Vaults />} />
-                  <Route path="/vaults/create" element={<ProtectedRoute><CreateVault /></ProtectedRoute>} />
-                  <Route path="/vaults/:id" element={<ProtectedRoute><VaultDetail /></ProtectedRoute>} />
-                  <Route path="/vaults/:id/transactions" element={<VaultTransactions />} />
-                  <Route path="/transactions" element={<VaultTransactions />} />
-                  <Route path="/verifier" element={<VerifierDashboard />} />
-                  <Route path="/verifier/queue" element={<ProtectedRoute><PendingValidations /></ProtectedRoute>} />
-                  <Route path="/verifier/queue/:vaultId" element={<ProtectedRoute><ValidationDetail /></ProtectedRoute>} />
-                  <Route path="/verifier/history" element={<ValidationHistory />} />
-                  <Route path="/help" element={<HelpCenter />} />
-                  <Route path="/help/search" element={<HelpCenter />} />
-                  <Route
-                    path="/analytics"
-                    element={
+            <Layout>
+              <Routes>
+                <Route path="/" element={<RouteErrorBoundary><Home /></RouteErrorBoundary>} />
+                <Route path="/dashboard" element={<RouteErrorBoundary><Dashboard /></RouteErrorBoundary>} />
+                <Route path="/vaults" element={<RouteErrorBoundary><Vaults /></RouteErrorBoundary>} />
+                <Route path="/vaults/create" element={<RouteErrorBoundary><ProtectedRoute><CreateVault /></ProtectedRoute></RouteErrorBoundary>} />
+                <Route path="/vaults/:id" element={<RouteErrorBoundary><ProtectedRoute><VaultDetail /></ProtectedRoute></RouteErrorBoundary>} />
+                <Route path="/vaults/:id/transactions" element={<RouteErrorBoundary><VaultTransactions /></RouteErrorBoundary>} />
+                <Route path="/transactions" element={<RouteErrorBoundary><VaultTransactions /></RouteErrorBoundary>} />
+                <Route path="/verifier" element={<RouteErrorBoundary><VerifierDashboard /></RouteErrorBoundary>} />
+                <Route path="/verifier/queue" element={<RouteErrorBoundary><ProtectedRoute><PendingValidations /></ProtectedRoute></RouteErrorBoundary>} />
+                <Route path="/verifier/queue/:vaultId" element={<RouteErrorBoundary><ProtectedRoute><ValidationDetail /></ProtectedRoute></RouteErrorBoundary>} />
+                <Route path="/verifier/history" element={<RouteErrorBoundary><ValidationHistory /></RouteErrorBoundary>} />
+                <Route path="/help" element={<RouteErrorBoundary><HelpCenter /></RouteErrorBoundary>} />
+                <Route path="/help/search" element={<RouteErrorBoundary><HelpCenter /></RouteErrorBoundary>} />
+                <Route
+                  path="/analytics"
+                  element={
+                    <RouteErrorBoundary>
                       <LazyRoute>
                         <Analytics />
                       </LazyRoute>
-                    }
-                  />
-                  <Route
-                    path="/notifications"
-                    element={
+                    </RouteErrorBoundary>
+                  }
+                />
+                <Route
+                  path="/notifications"
+                  element={
+                    <RouteErrorBoundary>
                       <LazyRoute>
                         <Notification />
                       </LazyRoute>
-                    }
-                  />
-                  <Route
-                    path="/notifications/settings"
-                    element={
+                    </RouteErrorBoundary>
+                  }
+                />
+                <Route
+                  path="/notifications/settings"
+                  element={
+                    <RouteErrorBoundary>
                       <LazyRoute>
                         <NotificationSettings />
                       </LazyRoute>
-                    }
-                  />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </Layout>
-            </ErrorBoundary>
+                    </RouteErrorBoundary>
+                  }
+                />
+                <Route path="*" element={<RouteErrorBoundary><NotFound /></RouteErrorBoundary>} />
+              </Routes>
+            </Layout>
           </BrowserRouter>
         </AppConfigProvider>
       </WalletProvider>
