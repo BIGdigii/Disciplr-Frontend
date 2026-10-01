@@ -17,7 +17,7 @@ The tooltip bubble is integrated directly into the application's design system z
 
 The tooltip bubble styles use:
 ```tsx
-zIndex: "var(--z-index-tooltip, 150)"
+zIndex: "var(--z-index-tooltip)"
 ```
 
 This guarantees that tooltips:

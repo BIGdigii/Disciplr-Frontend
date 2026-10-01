@@ -1,10 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import { usePrefersReducedMotion } from "../utils/usePrefersReducedMotion";
 
 export type TooltipPosition = "top" | "bottom";
@@ -22,7 +16,7 @@ const ANIMATION_DURATION_MS = 150;
  * Lightweight, accessible Tooltip component.
  *
  * Stacking context is governed by the design system's z-index scale via
- * `var(--z-index-tooltip, 150)`, ensuring tooltips float above surrounding page
+ * `var(--z-index-tooltip)`, ensuring tooltips float above surrounding page
  * content and headers while remaining below drawers and modals.
  *
  * Accessibility features:
@@ -99,16 +93,26 @@ export function Tooltip({
 
   const positionStyle: React.CSSProperties =
     position === "top"
-      ? { bottom: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)" }
+      ? {
+          bottom: "calc(100% + 6px)",
+          left: "50%",
+          transform: "translateX(-50%)",
+        }
       : { top: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)" };
 
   const transitionStyle: React.CSSProperties = prefersReducedMotion
     ? {}
-    : { transition: `opacity ${ANIMATION_DURATION_MS}ms ease, transform ${ANIMATION_DURATION_MS}ms ease` };
+    : {
+        transition: `opacity ${ANIMATION_DURATION_MS}ms ease, transform ${ANIMATION_DURATION_MS}ms ease`,
+      };
 
   return (
     <span
-      style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+      }}
       className={className}
     >
       {trigger}
@@ -119,7 +123,7 @@ export function Tooltip({
         style={{
           position: "absolute",
           ...positionStyle,
-          zIndex: "var(--z-index-tooltip, 150)",
+          zIndex: "var(--z-index-tooltip)",
           pointerEvents: "none",
           whiteSpace: "nowrap",
           padding: "4px 10px",
