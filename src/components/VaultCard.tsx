@@ -5,6 +5,7 @@ import { VaultProgressBar } from './VaultProgressBar';
 import { CountdownDeadline } from './CountdownDeadline';
 import { Badge } from './Badge';
 import { StatusChip } from './StatusChip';
+import { deadlineUrgency, type UrgencyTier } from '../utils/vaultUrgency';
 import type { BadgeTone } from './Badge';
 import type { VaultStatus } from '../types/vault';
 
@@ -20,8 +21,6 @@ export interface VaultCardProps {
   progressPct: number;
   linkTo?: string;
 }
-
-import { deadlineUrgency, type UrgencyTier } from '../utils/vaultUrgency';
 
 const URGENCY_BADGE_CONFIG: Record<
   Exclude<UrgencyTier, 'safe'>,
