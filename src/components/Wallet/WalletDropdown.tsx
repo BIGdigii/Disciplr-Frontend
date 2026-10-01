@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useWallet } from '../../context/WalletContext';
 import { Copy, Plus, LogOut, Check, ExternalLink } from 'lucide-react';
 import { getExplorerAccountUrl } from '../../utils/explorer';
+import { truncateMiddle } from '../../utils/truncate';
 import './wallet.css';
 import { logger } from '../../utils/logger';
 import FocusTrap from 'focus-trap-react';
@@ -36,7 +37,6 @@ interface WalletDropdownProps {
  */
 
 const COPY_CONFIRM_MS = 2000;
-const TRUNCATE_MIN_LENGTH = 10;
 const MAX_BALANCE_ERROR_LENGTH = 200;
 
 const DECIMAL_BALANCE_PATTERN = /^\d+(\.\d+)?$/;
@@ -118,14 +118,6 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
     );
 
     if (!address) return null;
-
-    const truncateAddress = (addr: string) => {
-        if (typeof addr !== 'string') return '';
-        // Short values are shown verbatim so truncation never fabricates an
-        // ellipsis ("" would otherwise render as "...").
-        if (addr.length <= TRUNCATE_MIN_LENGTH) return addr;
-        return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-    };
 
     const copyAddress = async () => {
         // Single-flight confirmation: a repeat copy owns the reset window, so
@@ -242,7 +234,7 @@ export function WalletDropdown({ onClose, onSwitch }: WalletDropdownProps) {
             <div className="wallet-dropdown-menu" role="menu" aria-label="Wallet options" ref={dropdownRef}>
                 <div className="wallet-dropdown-header">
                     <div className="wallet-dropdown-address-container">
-                        <span className="wallet-dropdown-address">{truncateAddress(address)}</span>
+                        <span className="wallet-dropdown-address">{truncateMiddle(address, 6, 4)}</span>
                         <button className="wallet-copy-btn" onClick={copyAddress} title="Copy Address" role="menuitem">
                             {copyState === 'copied' ? <Check size={14} color="var(--success)" /> : <Copy size={14} />}
                         </button>
