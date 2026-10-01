@@ -303,6 +303,15 @@ describe("VaultDetail", () => {
     });
   });
 
+  it('hides the Add to calendar button when the deadline is invalid', async () => {
+    renderVaultDetail('2');
+
+    await screen.findByRole('heading', { name: 'Beta Reserve' });
+    expect(
+      screen.queryByRole('button', { name: /Add to calendar/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("renders transaction explorer links pointing to the active network", async () => {
     renderVaultDetail("1");
 
