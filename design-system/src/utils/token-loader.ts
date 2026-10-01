@@ -5,7 +5,6 @@
 import { DesignTokens } from '../types/tokens';
 import * as fs from 'fs';
 import * as path from 'path';
-import { logger } from './logger';
 
 /**
  * Invariants enforced by this module:
@@ -99,10 +98,11 @@ export function getAllTokens(): DesignTokens {
         Object.assign(allTokens, tokens);
       }
     } catch (error) {
-      logger.warn(`Failed to load ${file}:`, error);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to load required token file "${file}": ${message}`);
     }
   });
-  
+
   return allTokens;
 }
 
