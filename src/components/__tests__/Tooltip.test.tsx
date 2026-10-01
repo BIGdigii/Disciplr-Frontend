@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Tooltip } from "../Tooltip";
+import zIndexTokens from "../../../design-system/tokens/z-index.json";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -246,6 +247,38 @@ describe("Tooltip", () => {
 
   it("applies the correct design system z-index token", () => {
     renderTooltip();
+    const tooltip = screen.getByRole("tooltip", { hidden: true });
+    expect(tooltip).toHaveStyle({ zIndex: "var(--z-index-tooltip)" });
+  });
+
+  it("maintains the z-index token when visible", () => {
+    renderTooltip();
+    const trigger = screen.getByRole("button");
+    fireEvent.mouseEnter(trigger);
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip).toHaveStyle({ zIndex: "var(--z-index-tooltip)" });
+  });
+
+  it("verifies the tooltip token preserves the documented stacking hierarchy", () => {
+    const tooltipValue = zIndexTokens.zIndex.tooltip.$value;
+    const headerValue = zIndexTokens.zIndex.header.$value;
+    const baseValue = zIndexTokens.zIndex.base.$value;
+    const drawerValue = zIndexTokens.zIndex.drawer.$value;
+    const modalValue = zIndexTokens.zIndex.modal.$value;
+
+    expect(tooltipValue).toBe(150);
+    expect(tooltipValue).toBeGreaterThan(headerValue);
+    expect(tooltipValue).toBeGreaterThan(baseValue);
+    expect(tooltipValue).toBeLessThan(drawerValue);
+    expect(tooltipValue).toBeLessThan(modalValue);
+  });
+
+  it("preserves z-index styling when custom className is provided", () => {
+    render(
+      <Tooltip content="Custom class test" className="custom-wrapper-class">
+        <button type="button">Trigger</button>
+      </Tooltip>,
+    );
     const tooltip = screen.getByRole("tooltip", { hidden: true });
     expect(tooltip).toHaveStyle({ zIndex: "var(--z-index-tooltip)" });
   });
