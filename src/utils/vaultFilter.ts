@@ -21,7 +21,7 @@ import type { Vault, VaultStatus } from '../types/vault';
  */
 export interface VaultFilters {
   /** Status to filter by; undefined or 'all' returns all statuses */
-  status: VaultStatus | 'all';
+  status?: VaultStatus | 'all';
   /** Search query to match against vault name (case-insensitive) */
   query: string;
 }
