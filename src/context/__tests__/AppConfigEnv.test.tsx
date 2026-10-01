@@ -9,7 +9,8 @@ vi.mock('../../utils/networkMismatch', () => ({
 
 import { AppConfigProvider, useAppConfig } from '../AppConfigContext';
 import { WalletProvider } from '../WalletContext';
-import { EXPLORER_BASE_URLS, HORIZON_URLS, USDC_ISSUERS } from '../../utils/horizon';
+import { EXPLORER_BASE_URLS } from '../../utils/explorer';
+import { HORIZON_URLS, USDC_ISSUERS } from '../../utils/horizon';
 
 function TestComponent() {
   const config = useAppConfig();
