@@ -11,6 +11,7 @@ export interface AppConfig {
     explorerBaseUrl: string;
 }
 
+// The default network matches the expected network defined in networkMismatch.ts
 const DEFAULT_NETWORK: WalletNetwork = APP_EXPECTED_NETWORK;
 
 const AppConfigContext = createContext<AppConfig | undefined>(undefined);
