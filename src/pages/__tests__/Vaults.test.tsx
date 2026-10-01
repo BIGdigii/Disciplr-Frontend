@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { vi } from "vitest";
 import Vaults, { VaultsInner } from "../../pages/Vaults";
+import VaultCard from "../../components/VaultCard";
 import type { Vault } from "../../types/vault";
 
 // Helper to mock fetch function
@@ -107,8 +108,8 @@ describe("Vaults page states", () => {
         failureAddress: "GFAIL3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQKK",
         milestones: [{ title: "Milestone A", criteria: "Criteria A" }],
         createdAt: "2024-01-01T00:00:00Z",
-        creatorAddress: "GCREA3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK",
-        contractAddress: "GCONT3KQKM4XNQPBEZMXPOLKQKM4XNQPBEZMXPOLKQK",
+        creatorAddress: "GCREA3KQKM4XNQPBEZMXPOLKQK4XNQPBEZMXPOLKQKK",
+        contractAddress: "GCONT3KQKM4XNQPBEZMXPOLKQK4XNQPBEZMXPOLKQKK",
         transactions: [],
       },
     ];
@@ -346,6 +347,52 @@ describe("Vaults view toggle", () => {
     await waitFor(() => screen.getByLabelText(/Test Vault progress/i));
   });
 
+  test("memoized VaultCard does not re-render when unrelated Vaults state changes", async () => {
+    const spy = vi.spyOn(VaultCard, "type");
+
+    const mockData = [
+      {
+        id: "1",
+        name: "Alpha Vault",
+        amount: 1000,
+        currency: "USDC",
+        status: "active" as const,
+        deadline: "2025-06-01T00:00:00Z",
+        milestones: [],
+      },
+      {
+        id: "2",
+        name: "Beta Vault",
+        amount: 2000,
+        currency: "USDC",
+        status: "active" as const,
+        deadline: "2025-09-01T00:00:00Z",
+        milestones: [],
+      },
+    ];
+
+    render(<Vaults fetchVaults={mockSuccess(mockData)} />);
+    await waitFor(() => screen.getByText("Alpha Vault"));
+
+    // Grid view is the only view that renders VaultCard.
+    await userEvent.click(screen.getByRole("radio", { name: "Grid" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Alpha Vault progress")).toBeInTheDocument(),
+    );
+
+    const rendersAfterMount = spy.mock.calls.length;
+    expect(rendersAfterMount).toBe(mockData.length);
+
+    // Toggling the sort direction re-renders the page from its own state,
+    // without changing any individual card's props, so every memoized
+    // VaultCard must bail out instead of re-rendering.
+    await userEvent.click(screen.getByRole("button", { name: /sort/i }));
+
+    expect(spy.mock.calls.length).toBe(rendersAfterMount);
+
+    spy.mockRestore();
+  });
+
   test("handles localStorage errors gracefully", async () => {
     // Mock localStorage to throw error
     const originalGetItem = localStorageMock.getItem;
@@ -386,7 +433,13 @@ describe("Vaults filter and sort", () => {
       currency: "USDC",
       status: "active",
       deadline: "2025-06-01T00:00:00Z",
+      createdAt: "2024-01-01T00:00:00Z",
+      creatorAddress: "GCREA3KQKM4XNQPBEZMXPOLKQK4XNQPBEZMXPOLKQKK",
+      successAddress: "GSUCC3KQKM4XNQPBEZMXPOLKQK4XNQPBEZMXPOLKQKK",
+      failureAddress: "GFAIL3KQKM4XNQPBEZMXPOLKQK4XNQPBEZMXPOLKQKK",
+      contractAddress: "GCONT3KQKM4XNQPBEZMXPOLKQKK4XNQPBEZMXPOLKQK",
       milestones: [],
+      transactions: [],
     },
     {
       id: "2",
@@ -405,6 +458,7 @@ describe("Vaults filter and sort", () => {
       status: "failed",
       deadline: "2025-01-01T00:00:00Z",
       milestones: [],
+      transactions: [],
     },
   ];
 
@@ -416,6 +470,15 @@ describe("Vaults filter and sort", () => {
       screen.getByLabelText(/Filter by status/i),
       "active",
     );
+    render(<Vaults fetchVaults={fetchMock} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    // Second call should be ignored while in-flight
+    await act(async () => {
+      resolve?.([]);
+    });
+    await waitFor(() => screen.getByText(/You don’t have any vaults yet./i));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 
     expect(screen.getByText("Alpha Project")).toBeInTheDocument();
     expect(screen.queryByText("Beta Project")).not.toBeInTheDocument();
