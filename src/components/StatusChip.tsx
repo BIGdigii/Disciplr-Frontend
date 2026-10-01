@@ -80,7 +80,16 @@ export const StatusChip: React.FC<StatusChipProps> = ({
   size = "md",
   className = "",
 }) => {
-  const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.cancelled;
+  const config = STATUS_CONFIG[status] ?? {
+    defaultLabel: String(status),
+    color: "var(--muted)",
+    bg: "color-mix(in srgb, var(--muted) 10%, transparent)",
+    description: `Unknown status: ${status}`,
+  };
+
+  if (!STATUS_CONFIG[status]) {
+    console.warn(`[StatusChip] Unknown status encountered: ${status}`);
+  }
   const sizeStyle = SIZE_STYLES[size];
   const displayLabel = label ?? config.defaultLabel;
   const tooltipContent = tooltip ?? config.description;
