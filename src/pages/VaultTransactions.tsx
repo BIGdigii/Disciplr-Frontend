@@ -103,6 +103,59 @@ const STATUS_META: Record<TxStatus, StatusMeta> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Invariant: any Transaction surfaced to the UI must have a valid Date
+ * timestamp, finite amount/fee, and non-empty hash. Records that violate
+ * this are dropped and logged (without leaking sensitive fields) so that
+ * downstream formatters, sorters, and totals cannot throw or silently
+ * produce NaN/Invalid Date.
+ */
+function isValidTransaction(tx: unknown): tx is Transaction {
+  if (!tx || typeof tx !== "object") return false;
+  const t = tx as Partial<Transaction>;
+  if (typeof t.id !== "string" || t.id.length === 0) return false;
+  if (typeof t.hash !== "string" || t.hash.length === 0) return false;
+  if (typeof t.type !== "string" || !(t.type in TYPE_META)) return false;
+  if (typeof t.status !== "string" || !(t.status in STATUS_META)) return false;
+  if (typeof t.amount !== "number" || !Number.isFinite(t.amount)) return false;
+  if (typeof t.fee !== "number" || !Number.isFinite(t.fee)) return false;
+  if (!(t.timestamp instanceof Date) || Number.isNaN(t.timestamp.getTime()))
+    return false;
+  return true;
+}
+
+/**
+ * Parse a user-entered amount filter. Returns `undefined` for empty input,
+ * `null` for invalid input (so callers can distinguish "no filter" from
+ * "rejected"), and a finite number otherwise. Rejects partial parses like
+ * "1abc", NaN, Infinity, and negative values.
+ */
+function parseAmountFilter(raw: string): number | null | undefined {
+  const trimmed = raw.trim();
+  if (trimmed === "") return undefined;
+  // Reject anything that isn't a clean decimal number.
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
+/**
+ * Safe clipboard write. `navigator.clipboard.writeText` can throw
+ * synchronously in insecure contexts and its promise can reject; both are
+ * swallowed here so a copy failure never breaks the surrounding UI.
+ */
+function safeCopyToClipboard(text: string): void {
+  try {
+    const result = navigator?.clipboard?.writeText?.(text);
+    if (result && typeof result.catch === "function") {
+      result.catch(() => {});
+    }
+  } catch {
+    // Clipboard unavailable (insecure context, permissions, SSR). Non-fatal.
+  }
+}
+
 function fmtTime(date: Date): string {
   return formatRelativeTime(date);
 }

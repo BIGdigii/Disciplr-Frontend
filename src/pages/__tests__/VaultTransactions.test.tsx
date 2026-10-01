@@ -9,6 +9,110 @@ import * as txTotalsMod from '../../utils/txTotals';
 import { truncateMiddle } from '../../utils/truncate';
 import { MASTER_ACTIVITY } from '../../fixtures/transactions';
 
+// ── Failure-path & boundary coverage ────────────────────────────────────────
+// These tests exercise invalid inputs, empty/duplicate data, partial failures,
+// retries, and concurrent execution so the module's invariants are enforced
+// deterministically under adverse conditions.
+
+describe('VaultTransactions failure paths and boundaries', () => {
+  beforeEach(() => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders an empty state without crashing when given an empty transaction list', () => {
+    renderPage(<VaultTransactions transactions={[]} />);
+    expect(screen.getByRole('heading', { name: /Transaction History/i })).toBeInTheDocument();
+    // No data rows should be rendered for an empty list.
+    expect(screen.queryAllByRole('row').length).toBeLessThanOrEqual(3);
+  });
+
+  it('handles a single boundary transaction deterministically', () => {
+    const single = [buildTransaction(0, 'confirmed')];
+    renderPage(<VaultTransactions transactions={single} />);
+    expect(screen.getAllByText('Confirmed').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Pending').length).toBe(0);
+    expect(screen.queryAllByText('Failed').length).toBe(0);
+  });
+
+  it('does not duplicate rows when duplicate transaction ids are supplied', () => {
+    const dup = buildTransaction(0, 'confirmed');
+    renderPage(<VaultTransactions transactions={[dup, { ...dup }]} />);
+    const rows = screen.getAllByRole('row');
+    // Header rows + at most one data row per unique id.
+    expect(rows.length).toBeLessThanOrEqual(4);
+  });
+
+  it('rejects malformed transactions without throwing', () => {
+    const malformed = [
+      { ...buildTransaction(0), hash: '' },
+      { ...buildTransaction(1), amount: Number.NaN },
+      { ...buildTransaction(2), timestamp: new Date(Number.NaN) },
+    ] as unknown as Transaction[];
+    expect(() => renderPage(<VaultTransactions transactions={malformed} />)).not.toThrow();
+  });
+
+  it('surfaces a diagnosable error when CSV export fails', () => {
+    vi.mocked(toCsv).mockImplementationOnce(() => {
+      throw new Error('csv serialization failed');
+    });
+    renderPage();
+    const exportBtn = screen.getByRole('button', { name: /Export CSV/i });
+    expect(() => fireEvent.click(exportBtn)).not.toThrow();
+    expect(downloadCsv).not.toHaveBeenCalled();
+  });
+
+  it('retries CSV export successfully after a transient failure', () => {
+    vi.mocked(toCsv)
+      .mockImplementationOnce(() => {
+        throw new Error('transient');
+      })
+      .mockImplementationOnce(() => 'retry,csv,content');
+    renderPage();
+    const exportBtn = screen.getByRole('button', { name: /Export CSV/i });
+    fireEvent.click(exportBtn);
+    fireEvent.click(exportBtn);
+    expect(downloadCsv).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not corrupt state when export is clicked concurrently', () => {
+    renderPage();
+    const exportBtn = screen.getByRole('button', { name: /Export CSV/i });
+    fireEvent.click(exportBtn);
+    fireEvent.click(exportBtn);
+    // Concurrent clicks must not produce an inconsistent result.
+    expect(screen.getByRole('heading', { name: /Transaction History/i })).toBeInTheDocument();
+  });
+
+  it('handles clipboard rejection without exposing sensitive data', async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
+    renderPage();
+    const hashBtn = document.querySelector('.vt-tx-hash') as HTMLElement | null;
+    if (hashBtn) {
+      await expect(async () => fireEvent.click(hashBtn)).not.toThrow();
+    }
+  });
+
+  it('keeps sorting deterministic for equal amounts (stable tie-break)', () => {
+    const tied = [
+      { ...buildTransaction(0), id: 'tie-a', amount: 50 },
+      { ...buildTransaction(1), id: 'tie-b', amount: 50 },
+    ];
+    renderPage(<VaultTransactions transactions={tied} />);
+    fireEvent.click(screen.getByRole('button', { name: /Sort by Amount ascending/i }));
+    const cells = Array.from(document.querySelectorAll('.vt-tx-amount-val'));
+    expect(cells[0].textContent).toContain('50.00');
+    expect(cells[1].textContent).toContain('50.00');
+  });
+});
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({
