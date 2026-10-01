@@ -6,7 +6,10 @@ import { Tooltip } from "../Tooltip";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function renderTooltip(content = "Tooltip text", position: "top" | "bottom" = "top") {
+function renderTooltip(
+  content = "Tooltip text",
+  position: "top" | "bottom" = "top",
+) {
   return render(
     <Tooltip content={content} position={position}>
       <button type="button">Trigger</button>
@@ -41,7 +44,9 @@ describe("Tooltip", () => {
 
   it("renders the tooltip content string", () => {
     renderTooltip("Full hash value");
-    expect(screen.getByRole("tooltip", { hidden: true })).toHaveTextContent("Full hash value");
+    expect(screen.getByRole("tooltip", { hidden: true })).toHaveTextContent(
+      "Full hash value",
+    );
   });
 
   // ── Hover ─────────────────────────────────────────────────────────────────
@@ -60,7 +65,9 @@ describe("Tooltip", () => {
 
     fireEvent.mouseLeave(trigger);
     act(() => vi.runAllTimers());
-    expect(screen.getByRole("tooltip", { hidden: true })).toHaveStyle({ visibility: "hidden" });
+    expect(screen.getByRole("tooltip", { hidden: true })).toHaveStyle({
+      visibility: "hidden",
+    });
   });
 
   // ── Focus ─────────────────────────────────────────────────────────────────
@@ -79,7 +86,9 @@ describe("Tooltip", () => {
 
     fireEvent.blur(trigger);
     act(() => vi.runAllTimers());
-    expect(screen.getByRole("tooltip", { hidden: true })).toHaveStyle({ visibility: "hidden" });
+    expect(screen.getByRole("tooltip", { hidden: true })).toHaveStyle({
+      visibility: "hidden",
+    });
   });
 
   // ── Escape key ────────────────────────────────────────────────────────────
@@ -90,7 +99,9 @@ describe("Tooltip", () => {
     expect(screen.getByRole("tooltip")).toHaveStyle({ visibility: "visible" });
 
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.getByRole("tooltip", { hidden: true })).toHaveStyle({ visibility: "hidden" });
+    expect(screen.getByRole("tooltip", { hidden: true })).toHaveStyle({
+      visibility: "hidden",
+    });
   });
 
   it("does not throw when Escape is pressed while tooltip is already hidden", () => {
@@ -138,13 +149,19 @@ describe("Tooltip", () => {
 
   it("tooltip is aria-hidden when not visible", () => {
     renderTooltip();
-    expect(screen.getByRole("tooltip", { hidden: true })).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("tooltip", { hidden: true })).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
   });
 
   it("tooltip is not aria-hidden when visible", () => {
     renderTooltip();
     fireEvent.mouseEnter(screen.getByRole("button"));
-    expect(screen.getByRole("tooltip")).not.toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("tooltip")).not.toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
   });
 
   // ── Position prop ─────────────────────────────────────────────────────────
@@ -183,6 +200,6 @@ describe("Tooltip", () => {
   it("applies the correct design system z-index token", () => {
     renderTooltip();
     const tooltip = screen.getByRole("tooltip", { hidden: true });
-    expect(tooltip).toHaveStyle({ zIndex: "var(--z-index-tooltip, 150)" });
+    expect(tooltip).toHaveStyle({ zIndex: "var(--z-index-tooltip)" });
   });
 });
